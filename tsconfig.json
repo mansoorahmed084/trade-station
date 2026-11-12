@@ -1,0 +1,31 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+        "types": ["node"],
+        "jsx": "react-jsx",
+        "strict": true,
+        "noUncheckedIndexedAccess": false,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "erasableSyntaxOnly": true,
+        "verbatimModuleSyntax": true,
+        "allowImportingTsExtensions": true,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true
+    },
+    "include": [
+        "apps/*/src",
+        "apps/*/*.ts",
+        "packages/*/src",
+        "packages/*/test",
+        "tests",
+        "spikes",
+        "vitest.config.ts"
+    ],
+    "exclude": ["node_modules", "**/dist"]
+}

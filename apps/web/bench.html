@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chart engine benchmark</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0e1116; color: #c9d1d9; font: 13px system-ui, sans-serif; }
+  #stage { display: grid; gap: 2px; height: calc(100% - 28px); }
+  #stage > div { min-height: 0; min-width: 0; position: relative; }
+  #status { height: 28px; line-height: 28px; padding: 0 10px; white-space: nowrap; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="status">idle — call window.runBench() or add ?auto=1</div>
+<div id="stage"></div>
+<script type="module" src="/src/bench/main.ts"></script>
+</body>
+</html>

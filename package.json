@@ -1,0 +1,32 @@
+{
+    "name": "trade-station",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "workspaces": [
+        "apps/*",
+        "packages/*",
+        "spikes"
+    ],
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "dev": "node scripts/dev.mjs",
+        "dev:server": "npm run dev -w @ts/server",
+        "dev:web": "npm run dev -w @ts/web",
+        "build": "npm run build -w @ts/web",
+        "start": "node apps/server/src/main.ts",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "test": "vitest run",
+        "bench": "node tests/bench/run.ts",
+        "lint": "biome check ."
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.6.7",
+        "@types/node": "^26.6.6",
+        "playwright-core": "^1.65.0",
+        "typescript": "^7.0.2",
+        "vitest": "^5.1.0"
+    }
+}
