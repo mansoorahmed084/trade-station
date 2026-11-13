@@ -76,7 +76,9 @@ export function FormulaDialog({
     const compare = async (symbol: string) => {
         setBusy(true);
         setError(null);
-        const result = await chart.runIndicator(compareScript(symbol));
+        const result = await chart.runIndicator(compareScript(symbol), {
+            title: `Compare ${symbol.slice(symbol.indexOf(':') + 1)}`,
+        });
         setBusy(false);
         if (result.ok) onClose();
         else setError(result.error?.message ?? 'could not add the comparison');

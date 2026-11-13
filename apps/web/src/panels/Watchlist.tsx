@@ -364,7 +364,11 @@ export function Watchlist({
                     );
                     if (it.kind === 'section') {
                         return (
-                            <div key={`s${i}`} className={`wl-section ${dragOver === i ? 'drag-over' : ''}`} {...drag}>
+                            <div
+                                key={`section:${it.title}:${list.items.slice(0, i).filter((x) => x.kind === 'section' && x.title === it.title).length}`}
+                                className={`wl-section ${dragOver === i ? 'drag-over' : ''}`}
+                                {...drag}
+                            >
                                 <span>{it.title}</span>
                                 {remove}
                             </div>

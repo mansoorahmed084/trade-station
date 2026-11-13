@@ -1,6 +1,7 @@
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './app-context.ts';
+import { BottomPanel } from './BottomPanel.tsx';
 import { Chart } from './Chart.tsx';
 import { ChartTypeDialog } from './dialogs/ChartTypeDialog.tsx';
 import { FormulaDialog } from './dialogs/FormulaDialog.tsx';
@@ -19,6 +20,8 @@ export function App() {
     const [workspace, setWorkspace] = useState<VelaWorkspace | null>(null);
     const rightPanel = useUi((s) => s.rightPanel);
     const replayOpen = useUi((s) => s.replayOpen);
+    const bottomPanel = useUi((s) => s.bottomPanel);
+    const bottomHeight = useUi((s) => s.bottomHeight);
     const dialog = useUi((s) => s.dialog);
     const setDialog = useUi((s) => s.setDialog);
 
@@ -58,7 +61,7 @@ export function App() {
             chart?.resize?.();
         });
         return () => cancelAnimationFrame(id);
-    }, [workspace, rightPanel, replayOpen]);
+    }, [workspace, rightPanel, replayOpen, bottomPanel, bottomHeight]);
 
     const onReady = useCallback((ws: VelaWorkspace | null) => setWorkspace(ws), []);
     const services = useMemo(() => ({ client, workspace }), [client, workspace]);
@@ -83,6 +86,7 @@ export function App() {
                             </div>
                         )}
                         {workspace && replayOpen && <ReplayBar workspace={workspace} />}
+                        {workspace && bottomPanel && <BottomPanel client={client} workspace={workspace} />}
                     </div>
                     {providers && rightPanel === 'watchlist' && (
                         <Watchlist client={client} workspace={workspace} providers={providers} />

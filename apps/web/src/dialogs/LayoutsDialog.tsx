@@ -1,4 +1,5 @@
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
+import { readHeader } from '@ts/script-engine/source';
 import { useEffect, useState } from 'react';
 import type { ServerClient } from '../lib/client.ts';
 import { Button, Modal, Tabs } from '../ui.tsx';
@@ -9,7 +10,7 @@ interface Saved {
 }
 type Store = Record<string, Saved>;
 
-const KEYS = { layouts: 'savedLayouts', templates: 'chartTemplates' } as const;
+const KEYS = { layouts: 'savedLayouts', templates: 'chartTemplates', indicators: 'indicatorTemplates' } as const;
 type Kind = keyof typeof KEYS;
 
 const COPY: Record<Kind, { noun: string; hint: string }> = {
@@ -19,11 +20,44 @@ const COPY: Record<Kind, { noun: string; hint: string }> = {
     },
     templates: {
         noun: 'template',
-        hint: 'A template is the look of one chart: colours, scales, grid and status line. It is applied to the active chart.',
+        hint: 'A chart template is the look of one chart: colours, scales, grid and status line. It is applied to the active chart.',
+    },
+    indicators: {
+        noun: 'indicator set',
+        hint: 'An indicator set is every indicator on the active chart. Loading one adds them to the active chart with their default inputs.',
     },
 };
 
-/** Named, saved copies of the workspace (layouts) and of a chart's appearance (templates). */
+interface IndicatorSet {
+    scripts: { title: string; source: string; language?: string }[];
+    natives: string[];
+}
+
+/** What is on a chart, in a form that can be added to another chart. Volume is left out: charts add it themselves. */
+function captureIndicators(chart: any): IndicatorSet {
+    const set: IndicatorSet = { scripts: [], natives: [] };
+    for (const h of chart.indicators()) {
+        if (h.source) set.scripts.push({ title: h.title, source: h.source, language: h.language });
+        else if (h.nativeType && h.nativeType !== 'volume') set.natives.push(h.nativeType);
+    }
+    return set;
+}
+
+function applyIndicators(chart: any, set: IndicatorSet): number {
+    let added = 0;
+    for (const type of set.natives ?? []) {
+        chart.addNativeIndicator(type);
+        added++;
+    }
+    for (const s of set.scripts ?? []) {
+        const title = readHeader(s.source).title ?? (s.title && s.title !== 'Indicator' ? s.title : undefined);
+        chart.addIndicator(s.source, { ...(s.language ? { language: s.language } : {}), ...(title ? { title } : {}) });
+        added++;
+    }
+    return added;
+}
+
+/** Named, saved copies of the workspace (layouts), a chart's appearance (templates) and its indicators (sets). */
 export function LayoutsDialog({
     client,
     workspace,
@@ -62,9 +96,19 @@ export function LayoutsDialog({
         if (!key) return;
         if (store[key] && !confirm(`Replace the saved ${COPY[kind].noun} "${key}"?`)) return;
         const chart: any = workspace.chart;
-        const data = kind === 'layouts' ? workspace.getState() : chart.renderer.getConfig();
+        let data: unknown;
+        if (kind === 'layouts') data = workspace.getState();
+        else if (kind === 'templates') data = chart.renderer.getConfig();
+        else {
+            const set = captureIndicators(chart);
+            data = set.scripts.length + set.natives.length > 0 ? set : null;
+        }
         if (!data) {
-            setError('Nothing to save: the chart is not ready yet.');
+            setError(
+                kind === 'indicators'
+                    ? 'The active chart has no indicators to save.'
+                    : 'Nothing to save: the chart is not ready yet.',
+            );
             return;
         }
         persist({ ...store, [key]: { savedAt: Date.now(), data } });
@@ -76,7 +120,8 @@ export function LayoutsDialog({
         try {
             const chart: any = workspace.chart;
             if (kind === 'layouts') workspace.applyState(store[key].data as any);
-            else chart.renderer.applyConfig(store[key].data);
+            else if (kind === 'templates') chart.renderer.applyConfig(store[key].data);
+            else applyIndicators(chart, store[key].data as IndicatorSet);
             onClose();
         } catch (err: any) {
             setError(err?.message ?? 'could not apply it');
@@ -84,16 +129,25 @@ export function LayoutsDialog({
     };
 
     const names = Object.keys(store).sort((a, b) => store[b].savedAt - store[a].savedAt);
+    const describe = (saved: Saved): string => {
+        if (kind !== 'indicators') return '';
+        const set = saved.data as IndicatorSet;
+        return `${(set.scripts?.length ?? 0) + (set.natives?.length ?? 0)} indicators`;
+    };
 
     return (
-        <Modal title="Saved layouts and templates" onClose={onClose} width={520}>
+        <Modal title="Saved layouts and templates" onClose={onClose} width={560}>
             <Tabs
                 tabs={[
                     { id: 'layouts', label: 'Layouts' },
                     { id: 'templates', label: 'Chart templates' },
+                    { id: 'indicators', label: 'Indicator sets' },
                 ]}
                 value={kind}
-                onChange={setKind}
+                onChange={(k) => {
+                    setKind(k);
+                    setError(null);
+                }}
             />
             <p className="muted" style={{ marginTop: 0 }}>
                 {COPY[kind].hint}
@@ -119,7 +173,9 @@ export function LayoutsDialog({
             {names.map((key) => (
                 <div className="list-row" key={key}>
                     <span className="grow">{key}</span>
-                    <span className="muted">{new Date(store[key].savedAt).toLocaleString()}</span>
+                    <span className="muted">
+                        {describe(store[key])} {new Date(store[key].savedAt).toLocaleString()}
+                    </span>
                     <Button onClick={() => load(key)}>Load</Button>
                     <Button
                         variant="danger"

@@ -32,6 +32,19 @@ export function setupVela(): void {
         ),
     );
 
+    registerIcon(
+        'ts-editor',
+        icon('<path d="M5.5 4.5L2 8l3.5 3.5"/><path d="M10.5 4.5L14 8l-3.5 3.5"/><path d="M9 3l-2 10"/>'),
+    );
+    registerWidgetAction({
+        id: 'ts.editor',
+        target: 'topbar',
+        label: 'Pine editor and script library',
+        icon: 'ts-editor',
+        iconOnly: true,
+        order: 0,
+        run: () => useUi.getState().toggleBottomPanel('editor'),
+    });
     registerWidgetAction({
         id: 'ts.replay',
         target: 'topbar',

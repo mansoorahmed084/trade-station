@@ -9,6 +9,18 @@ const MIGRATIONS: string[] = [
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE scripts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        source TEXT NOT NULL,
+        kind TEXT,
+        author TEXT,
+        license TEXT,
+        origin TEXT,
+        builtin INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    )`,
 ];
 
 export function registerMigration(sql: string): void {

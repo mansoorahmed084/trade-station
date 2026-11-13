@@ -198,3 +198,105 @@ describe('WebSocket gateway', () => {
         ok.close();
     });
 });
+
+describe('script library and script host API', () => {
+    const post = (path: string, body: unknown, method = 'POST') =>
+        fetch(`${base}${path}`, {
+            method,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+    it('seeds example scripts that all run cleanly on this runtime', async () => {
+        const list = await (await fetch(`${base}/api/scripts`)).json();
+        expect(list.length).toBeGreaterThanOrEqual(7);
+        expect(list.every((s: any) => s.builtin && s.source === undefined)).toBe(true);
+        expect(list.map((s: any) => s.kind).sort()).toEqual([
+            'indicator',
+            'indicator',
+            'indicator',
+            'indicator',
+            'indicator',
+            'strategy',
+            'strategy',
+        ]);
+        for (const meta of list) {
+            const script = await (await fetch(`${base}/api/scripts/${meta.id}`)).json();
+            const report = await (
+                await post('/api/scripts/check', { source: script.source, symbol: 'SYNTH:GAMMA', timeframe: '15' })
+            ).json();
+            expect(report.errors, `${meta.name}: ${JSON.stringify(report.errors)}`).toEqual([]);
+            expect(report.unsupported, meta.name).toEqual([]);
+            expect(report.ok, meta.name).toBe(true);
+            expect(report.title, meta.name).toBe(meta.name);
+        }
+    }, 60_000);
+
+    it('creates, updates, lists and deletes a script, keeping its attribution', async () => {
+        const source = '//@version=6\nindicator("Mine")\nplot(ta.sma(close, 5), "SMA")';
+        const created = await (
+            await post('/api/scripts', {
+                source,
+                author: 'Someone',
+                license: 'CC BY-NC-SA 4.0',
+                origin: 'https://example.com/script',
+            })
+        ).json();
+        expect(created).toMatchObject({
+            name: 'Mine',
+            kind: 'indicator',
+            author: 'Someone',
+            license: 'CC BY-NC-SA 4.0',
+            builtin: false,
+        });
+        const updated = await (
+            await post(
+                `/api/scripts/${created.id}`,
+                { name: 'Renamed', source: source.replace('indicator', 'strategy') },
+                'PUT',
+            )
+        ).json();
+        expect(updated).toMatchObject({
+            name: 'Renamed',
+            kind: 'strategy',
+            author: 'Someone',
+            origin: 'https://example.com/script',
+        });
+        expect(updated.updatedAt).toBeGreaterThanOrEqual(created.updatedAt);
+        const list = await (await fetch(`${base}/api/scripts`)).json();
+        expect(list[0].id).toBe(created.id);
+        expect((await fetch(`${base}/api/scripts/${created.id}`, { method: 'DELETE' })).status).toBe(204);
+        expect((await fetch(`${base}/api/scripts/${created.id}`)).status).toBe(404);
+        expect((await post('/api/scripts', { source: '   ' })).status).toBe(400);
+        expect((await post('/api/scripts/nope', { name: 'x' }, 'PUT')).status).toBe(404);
+    });
+
+    it('runs a script on the server and reports failures with their position', async () => {
+        const ok = await post('/api/scripts/run', {
+            source: '//@version=6\nindicator("R")\nplot(ta.rsi(close, 14), "RSI")',
+            symbol: 'SYNTH:ALPHA',
+            timeframe: '5',
+            bars: 200,
+        });
+        expect(ok.status).toBe(200);
+        const run = await ok.json();
+        expect(run.times.length).toBe(200);
+        expect(run.plots.RSI.filter((v: number | null) => v !== null).length).toBe(186);
+        const bad = await post('/api/scripts/run', {
+            source: '//@version=6\nindicator("R")\nplot(close',
+            symbol: 'SYNTH:ALPHA',
+        });
+        expect(bad.status).toBe(422);
+        expect(await bad.json()).toMatchObject({ stage: 'compile', line: 3 });
+        expect((await post('/api/scripts/run', { source: 'plot(close)' })).status).toBe(400);
+        expect((await post('/api/scripts/check', {})).status).toBe(400);
+        const report = await (
+            await post('/api/scripts/check', {
+                source: '//@version=6\nindicator("U")\nplot(ta.nope(close))',
+                symbol: 'SYNTH:ALPHA',
+            })
+        ).json();
+        expect(report.ok).toBe(false);
+        expect(report.unsupported).toEqual([{ name: 'ta.nope', line: 3, column: 6 }]);
+    });
+});

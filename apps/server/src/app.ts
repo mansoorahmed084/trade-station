@@ -1,16 +1,20 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { BarStore, BinanceAdapter, type MarketDataAdapter, MarketDataService, SyntheticAdapter } from '@ts/datafeed';
+import { ScriptHost } from '@ts/script-engine';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
 import { Db } from './db.ts';
 import { Gateway, isLocalOrigin } from './gateway.ts';
+import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
 
 export interface App {
     server: FastifyInstance;
     data: MarketDataService;
     db: Db;
     gateway: Gateway;
+    scripts: ScriptStore;
+    scriptHost: ScriptHost;
     config: Config;
     listen(): Promise<string>;
     close(): Promise<void>;
@@ -197,11 +201,25 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
 
     await data.init();
 
+    const scriptHost = new ScriptHost(data);
+    const scripts = new ScriptStore(db);
+    registerScriptRoutes(server, {
+        scripts,
+        host: scriptHost,
+        // A script is checked against real bars; any symbol will do when the caller names none.
+        defaultSymbol: () => {
+            const all = data.listSymbols();
+            return (all.find((x) => x.symbol === 'BINANCE:BTCUSDT') ?? all[0])?.symbol ?? '';
+        },
+    });
+
     return {
         server,
         data,
         db,
         gateway,
+        scripts,
+        scriptHost,
         config,
         async listen() {
             return server.listen({ host: config.host, port: config.port });
