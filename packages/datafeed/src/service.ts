@@ -18,6 +18,7 @@ import {
 } from '@ts/core';
 import type { BarStore, Range } from './store.ts';
 import { type BarQuery, type MarketDataAdapter, type SeriesKey, seriesId } from './types.ts';
+import { VirtualSeriesManager } from './virtual.ts';
 
 export type BarListener = (bar: Bar, opened: boolean) => void;
 
@@ -71,6 +72,7 @@ export class MarketDataService {
     private log: (message: string) => void;
     private lingerMs: number;
     private stops: Unsubscribe[] = [];
+    private virtual = new VirtualSeriesManager(this);
 
     constructor(opts: DataServiceOptions) {
         this.store = opts.store;
@@ -152,6 +154,23 @@ export class MarketDataService {
 
     symbolInfo(symbol: string): SymbolInfo {
         return this.resolve(symbol).info;
+    }
+
+    /** Facts about any symbol, including chart-type series (`SYMBOL.RENKOXATR14`) and `SPREAD:` formulas. */
+    async describe(symbol: string): Promise<SymbolInfo> {
+        const virtual = this.virtual.match(symbol);
+        return virtual ? virtual.describe() : this.resolve(symbol).info;
+    }
+
+    /** The tradable symbol behind any chart symbol: a chart-type suffix is dropped. Throws for formulas. */
+    underlying(symbol: string): SymbolInfo {
+        const split = VirtualSeriesManager.looksVirtual(symbol) ? this.virtual.splitTransform(symbol) : null;
+        return split ? split.base : this.resolve(symbol).info;
+    }
+
+    /** The service's clock (injectable for tests). */
+    clock(): number {
+        return this.now();
     }
 
     // ── History ─────────────────────────────────────────────────────────────
@@ -266,6 +285,8 @@ export class MarketDataService {
      * newest `limit` bars up to `to`. The last bar is the forming one when the window reaches now.
      */
     async getBars(symbol: string, timeframe: string, query: BarQuery = {}): Promise<BarSeries> {
+        const virtual = this.virtual.match(symbol);
+        if (virtual) return virtual.getBars(timeframe, query);
         const { adapter, info } = this.resolve(symbol);
         const tf = normalizeTimeframe(timeframe);
         const base = this.baseTimeframe(adapter, tf);
@@ -387,6 +408,8 @@ export class MarketDataService {
 
     /** Live bars for any timeframe. One upstream stream per series, however many listeners. */
     subscribe(symbol: string, timeframe: string, listener: BarListener): Unsubscribe {
+        const virtual = this.virtual.match(symbol);
+        if (virtual) return virtual.subscribe(timeframe, listener);
         const { adapter, info } = this.resolve(symbol);
         const tf = normalizeTimeframe(timeframe);
         const base = this.baseTimeframe(adapter, tf);

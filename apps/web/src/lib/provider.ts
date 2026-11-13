@@ -49,6 +49,8 @@ export class ServerProvider {
             ticker: s.ticker,
             timezone: s.timezone,
             session: s.session,
+            // A formula has no volume of its own: the chart then adds no volume pane.
+            ...(s.provider === 'SPREAD' ? { volume: false } : {}),
             // Pine `syminfo.*`
             tickerid: s.symbol,
             prefix: s.provider,

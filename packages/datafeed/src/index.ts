@@ -3,3 +3,4 @@ export * from './service.ts';
 export * from './store.ts';
 export * from './synthetic.ts';
 export * from './types.ts';
+export * from './virtual.ts';

@@ -80,8 +80,9 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
 
     server.setErrorHandler((err: any, _req, reply) => {
         const message = err?.message ?? 'internal error';
-        const status =
-            err?.statusCode ?? (/^Unknown symbol|cannot serve timeframe|Invalid timeframe/.test(message) ? 404 : 500);
+        const notFound = /^Unknown symbol|cannot serve timeframe|Invalid timeframe/.test(message);
+        const badRequest = /formula/i.test(message);
+        const status = err?.statusCode ?? (notFound ? 404 : badRequest ? 400 : 500);
         if (status >= 500) log(`error: ${message}`);
         reply.code(status).send({ error: message });
     });
@@ -113,7 +114,43 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         return list;
     });
 
-    server.get('/api/symbol', async (req) => data.symbolInfo(String((req.query as any).symbol ?? '')));
+    server.get('/api/symbol', async (req) => data.describe(String((req.query as any).symbol ?? '')));
+
+    /** Last price and previous close for a set of symbols — what a watchlist row shows. */
+    server.get('/api/quotes', async (req) => {
+        const symbols = String((req.query as any).symbols ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 200);
+        return Promise.all(
+            symbols.map(async (symbol) => {
+                try {
+                    const [bars, info] = await Promise.all([
+                        data.getBars(symbol, '1D', { limit: 2 }),
+                        data.describe(symbol),
+                    ]);
+                    const last = bars.last();
+                    if (!last) return { symbol, error: 'no data' };
+                    const prev = bars.length > 1 ? bars.at(bars.length - 2) : null;
+                    return {
+                        symbol,
+                        last: last.close,
+                        prevClose: prev ? prev.close : last.open,
+                        open: last.open,
+                        high: last.high,
+                        low: last.low,
+                        volume: last.volume,
+                        time: last.time,
+                        tickSize: info.tickSize,
+                        description: info.description,
+                    };
+                } catch (err: any) {
+                    return { symbol, error: err?.message ?? 'failed' };
+                }
+            }),
+        );
+    });
 
     server.get('/api/bars', async (req, reply) => {
         const q = req.query as Record<string, string | undefined>;

@@ -31,7 +31,7 @@ const SPECS: Spec[] = [
         seed: 2,
         start: 50,
         vol: 0.0009,
-        drift: 0.00002,
+        drift: 0.000001,
         tickSize: 0.01,
     },
     {
