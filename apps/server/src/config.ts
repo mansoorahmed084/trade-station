@@ -8,6 +8,8 @@ export interface Config {
     providers: string[];
     /** Built web app to serve, when present. */
     webDir: string;
+    /** Credentials for outside notification channels. Read from the environment, never stored or returned by the API. */
+    notifier: { telegramToken?: string; smtpUrl?: string; smtpFrom?: string };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -20,5 +22,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             .map((s) => s.trim().toLowerCase())
             .filter(Boolean),
         webDir: resolve(env.TS_WEB_DIR ?? 'apps/web/dist'),
+        notifier: {
+            telegramToken: env.TS_TELEGRAM_TOKEN || undefined,
+            smtpUrl: env.TS_SMTP_URL || undefined,
+            smtpFrom: env.TS_SMTP_FROM || undefined,
+        },
     };
 }

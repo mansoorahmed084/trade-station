@@ -1,3 +1,4 @@
+import { ConditionEvaluator } from '@ts/alerts';
 import { type Bar, seededRandom } from '@ts/core';
 import {
     ATR,
@@ -89,8 +90,62 @@ const pineBars = bars(20_000).map((b) => ({
     volume: b.volume,
 }));
 
-/** Budgets added by later phases (alerts, backtests) register here too. */
+/** A thousand alerts on one series: price levels, indicator thresholds and two-condition groups. */
+function thousandAlerts(): ConditionEvaluator[] {
+    const out: ConditionEvaluator[] = [];
+    for (let i = 0; i < 1000; i++) {
+        const level = { type: 'value', value: 50 + i } as const;
+        if (i % 4 === 0)
+            out.push(
+                new ConditionEvaluator({
+                    left: { type: 'indicator', study: 'rsi', params: { length: 14 } },
+                    op: 'crossing_up',
+                    right: { type: 'value', value: 70 },
+                }),
+            );
+        else if (i % 4 === 1)
+            out.push(
+                new ConditionEvaluator({
+                    all: [
+                        {
+                            left: { type: 'price' },
+                            op: 'greater',
+                            right: { type: 'indicator', study: 'ema', params: { length: 50 } },
+                        },
+                        { left: { type: 'price' }, op: 'crossing', right: level },
+                    ],
+                }),
+            );
+        else
+            out.push(
+                new ConditionEvaluator({
+                    left: { type: 'price' },
+                    op: i % 2 === 0 ? 'crossing_up' : 'crossing_down',
+                    right: level,
+                }),
+            );
+    }
+    return out;
+}
+
+/** Budgets added by later phases (backtests) register here too. */
 export const benches: BenchCase[] = [
+    {
+        // The plan allows 100 ms from a tick to the alert decision. This measures 100 ticks across 1,000 alerts.
+        name: '1,000 alerts × 100 ticks',
+        budgetMs: 100,
+        run: () => {
+            const alerts = thousandAlerts();
+            for (const bar of history.slice(0, 400)) for (const a of alerts) a.seed(bar);
+            const forming = history[400];
+            const t0 = performance.now();
+            for (let tick = 0; tick < 100; tick++) {
+                const bar = { ...forming, close: forming.close * (1 + (tick % 9) * 1e-4) };
+                for (const a of alerts) a.tick(bar);
+            }
+            return performance.now() - t0;
+        },
+    },
     {
         // The plan allows 2 ms per tick for 25 indicators (2,000 ms here). The budget below is a regression guard far inside that.
         name: '25 native indicators × 1,000 live ticks',

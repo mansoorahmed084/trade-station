@@ -295,7 +295,7 @@ describe('messages', () => {
         tickSize: 0.01,
         left: 69420.129,
         right: 69400,
-        plots: { Fast: 69111.123456789012 },
+        plots: { Fast: 69111.1234567 },
     };
 
     it('fills TradingView-style placeholders and leaves unknown ones visible', () => {

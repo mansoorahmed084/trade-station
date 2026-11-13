@@ -15,7 +15,7 @@ let dir: string;
 beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'ts-server-'));
     app = await createApp(
-        { host: '127.0.0.1', port: 0, dataDir: dir, providers: [], webDir: join(dir, 'no-web') },
+        { host: '127.0.0.1', port: 0, dataDir: dir, providers: [], webDir: join(dir, 'no-web'), notifier: {} },
         { adapters: [new SyntheticAdapter({ tickMs: 20 })], log: () => {}, lingerMs: 0 },
     );
     base = await app.listen();

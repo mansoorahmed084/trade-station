@@ -136,6 +136,38 @@ export function findPlots(source: string): PlotCall[] {
     return out;
 }
 
+/** Titles of a script's `alertcondition()` calls, in source order. */
+export function findAlertConditions(source: string): string[] {
+    const code = stripCommentsAndStrings(source);
+    const out: string[] = [];
+    for (const m of code.matchAll(/(?<![A-Za-z0-9_.])alertcondition\s*\(/g)) {
+        const open = (m.index ?? 0) + m[0].length - 1;
+        let depth = 0;
+        let end = -1;
+        for (let i = open; i < code.length; i++) {
+            if (code[i] === '(' || code[i] === '[') depth++;
+            else if (code[i] === ')' || code[i] === ']') {
+                depth--;
+                if (depth === 0) {
+                    end = i;
+                    break;
+                }
+            }
+        }
+        if (end < 0) continue;
+        const args = splitArgs(source, code, open + 1, end);
+        let title: string | null = null;
+        for (const arg of args.slice(1)) {
+            const named = /^title\s*=\s*([\s\S]+)$/.exec(arg);
+            if (named) title = literal(named[1]);
+        }
+        if (title === null && args[1] !== undefined && !/^[A-Za-z_]\w*\s*=(?!=)/.test(args[1]))
+            title = literal(args[1]);
+        if (title && !out.includes(title)) out.push(title);
+    }
+    return out;
+}
+
 export type OnPlotStudy = 'sma' | 'ema' | 'rma' | 'wma' | 'rsi' | 'stdev' | 'roc' | 'highest' | 'lowest' | 'bb';
 
 export const ON_PLOT_STUDIES: { id: OnPlotStudy; label: string }[] = [

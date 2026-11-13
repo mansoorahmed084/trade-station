@@ -1,11 +1,13 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
+import type { AlertEngine } from '@ts/alerts';
 import { BarStore, BinanceAdapter, type MarketDataAdapter, MarketDataService, SyntheticAdapter } from '@ts/datafeed';
 import { ScriptHost } from '@ts/script-engine';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Config } from './config.ts';
 import { Db } from './db.ts';
 import { Gateway, isLocalOrigin } from './gateway.ts';
+import { createAlerts, registerAlertRoutes } from './routes/alerts.ts';
 import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
 
 export interface App {
@@ -15,6 +17,7 @@ export interface App {
     gateway: Gateway;
     scripts: ScriptStore;
     scriptHost: ScriptHost;
+    alerts: AlertEngine;
     config: Config;
     listen(): Promise<string>;
     close(): Promise<void>;
@@ -213,6 +216,11 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         },
     });
 
+    const alerts = createAlerts({ db, data, scriptHost, scripts, gateway, notifier: config.notifier, log });
+    registerAlertRoutes(server, { ...alerts, data, gateway, notifier: config.notifier });
+    // Alerts start watching before the server accepts connections, so none is missed.
+    await alerts.engine.start();
+
     return {
         server,
         data,
@@ -220,11 +228,13 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         gateway,
         scripts,
         scriptHost,
+        alerts: alerts.engine,
         config,
         async listen() {
             return server.listen({ host: config.host, port: config.port });
         },
         async close() {
+            alerts.engine.stop();
             gateway.close();
             data.close();
             await server.close();

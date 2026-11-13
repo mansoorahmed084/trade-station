@@ -1,8 +1,15 @@
+import type { AlertInput } from '@ts/alerts/types';
 import { create } from 'zustand';
 
-export type RightPanel = 'watchlist';
+export type RightPanel = 'watchlist' | 'alerts';
 export type BottomPanel = 'editor';
-export type DialogId = 'layouts' | 'formula' | 'chartType';
+export type DialogId = 'layouts' | 'formula' | 'chartType' | 'alert';
+
+/** What the alert dialog opens with: an existing alert to edit, or values to start a new one from. */
+export interface AlertDraft {
+    editId?: string;
+    preset?: AlertInput;
+}
 
 interface UiState {
     rightPanel: RightPanel | null;
@@ -10,11 +17,14 @@ interface UiState {
     bottomHeight: number;
     replayOpen: boolean;
     dialog: DialogId | null;
+    alertDraft: AlertDraft | null;
     toggleRightPanel(panel: RightPanel): void;
+    showRightPanel(panel: RightPanel | null): void;
     toggleBottomPanel(panel: BottomPanel): void;
     setBottomHeight(height: number): void;
     setReplayOpen(open: boolean): void;
     setDialog(dialog: DialogId | null): void;
+    openAlertDialog(draft: AlertDraft): void;
 }
 
 const saved = (() => {
@@ -41,8 +51,13 @@ export const useUi = create<UiState>((set, get) => ({
     bottomHeight: Math.min(700, Math.max(160, saved.bottomHeight ?? 340)),
     replayOpen: false,
     dialog: null,
+    alertDraft: null,
     toggleRightPanel(panel) {
         set({ rightPanel: get().rightPanel === panel ? null : panel });
+        persist(get());
+    },
+    showRightPanel(panel) {
+        set({ rightPanel: panel });
         persist(get());
     },
     toggleBottomPanel(panel) {
@@ -54,5 +69,6 @@ export const useUi = create<UiState>((set, get) => ({
         persist(get());
     },
     setReplayOpen: (replayOpen) => set({ replayOpen }),
-    setDialog: (dialog) => set({ dialog }),
+    setDialog: (dialog) => set({ dialog, ...(dialog === 'alert' ? {} : { alertDraft: null }) }),
+    openAlertDialog: (alertDraft) => set({ dialog: 'alert', alertDraft }),
 }));

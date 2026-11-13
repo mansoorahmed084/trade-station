@@ -20,6 +20,7 @@
     },
     "include": [
         "apps/*/src",
+        "apps/*/test",
         "apps/*/*.ts",
         "packages/*/src",
         "packages/*/test",

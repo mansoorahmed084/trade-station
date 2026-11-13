@@ -5,7 +5,7 @@ import { BarStore, MarketDataService, SyntheticAdapter } from '@ts/datafeed';
 import { BollingerBands, RSI, SMA, series } from '@ts/indicators';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ScriptHost } from '../src/index.ts';
-import { composeOnPlot, findPlots } from '../src/source.ts';
+import { composeOnPlot, findAlertConditions, findPlots } from '../src/source.ts';
 
 const BASE = `//@version=6
 indicator("Base", overlay=false)   // plot(fake, "in a comment")
@@ -37,6 +37,17 @@ describe('findPlots', () => {
         );
         expect(plots[0]).toMatchObject({ title: 'T', expr: 'nz(a[1], f(b, [1, 2]))' });
         expect(plots[1].expr).toBe('series=x');
+    });
+});
+
+describe('findAlertConditions', () => {
+    it('lists each alertcondition title once, positional or named, ignoring comments', () => {
+        const src = `alertcondition(a > b, "Up", "msg")
+// alertcondition(x, "Commented")
+alertcondition(ta.crossunder(f(a, b), c), title = 'Down', message = "m")
+alertcondition(a > b, "Up")
+alertcondition(a)`;
+        expect(findAlertConditions(src)).toEqual(['Up', 'Down']);
     });
 });
 

@@ -21,6 +21,19 @@ const MIGRATIONS: string[] = [
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
     )`,
+    `CREATE TABLE alerts (
+        id TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        active INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    )`,
+    `CREATE TABLE alert_log (
+        id TEXT PRIMARY KEY,
+        alert_id TEXT NOT NULL,
+        time INTEGER NOT NULL,
+        data TEXT NOT NULL
+    )`,
+    'CREATE INDEX alert_log_time ON alert_log (time DESC)',
 ];
 
 export function registerMigration(sql: string): void {

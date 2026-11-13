@@ -1,4 +1,5 @@
-import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
+import { registerIcon, registerWidgetAction, registerWidgetAttachment } from '@luxalgo/vela/plugin';
+import { registerChartLines } from './chart-lines.ts';
 import { isDerived, registerChartTypes } from './chart-types.ts';
 import { exportActiveChart } from './export.ts';
 import { useUi } from './store.ts';
@@ -13,6 +14,51 @@ export function setupVela(): void {
     if (done) return;
     done = true;
     registerChartTypes();
+    registerChartLines();
+
+    // Our alerts run on the server and have their own panel: retire the chart's built-in bell,
+    // which only knows about scripts running in this browser.
+    registerWidgetAttachment({
+        id: 'ts.alerts.bell',
+        mount: (ctx: any) => {
+            ctx.topbar?.setVisible?.('alerts', false);
+            return () => ctx.topbar?.setVisible?.('alerts', true);
+        },
+    });
+    registerIcon(
+        'ts-bell',
+        icon('<path d="M4 11V7.5a4 4 0 0 1 8 0V11l1.2 1.5H2.8z"/><path d="M6.6 13.6a1.5 1.5 0 0 0 2.8 0"/>'),
+    );
+    registerWidgetAction({
+        id: 'ts.alerts',
+        target: 'topbar',
+        label: 'Alerts',
+        icon: 'ts-bell',
+        iconOnly: true,
+        order: 35,
+        run: () => useUi.getState().toggleRightPanel('alerts'),
+    });
+    registerWidgetAction({
+        id: 'ts.alert.here',
+        target: 'context:body',
+        label: 'Add alert at this price',
+        order: 40,
+        when: (ctx: any) => ctx.pointer?.paneKind === 'price' && Number.isFinite(ctx.pointer?.price),
+        run: (ctx: any) => {
+            const price = Number(ctx.pointer.price);
+            // Round to the precision the axis shows, not to float noise.
+            const digits = price >= 1000 ? 2 : price >= 1 ? 4 : 8;
+            useUi.getState().openAlertDialog({
+                preset: {
+                    condition: {
+                        left: { type: 'price' },
+                        op: 'crossing',
+                        right: { type: 'value', value: Number(price.toFixed(digits)) },
+                    },
+                },
+            });
+        },
+    });
 
     registerIcon(
         'ts-replay',

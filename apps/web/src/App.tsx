@@ -3,15 +3,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './app-context.ts';
 import { BottomPanel } from './BottomPanel.tsx';
 import { Chart } from './Chart.tsx';
+import { AlertDialog } from './dialogs/AlertDialog.tsx';
 import { ChartTypeDialog } from './dialogs/ChartTypeDialog.tsx';
 import { FormulaDialog } from './dialogs/FormulaDialog.tsx';
 import { LayoutsDialog } from './dialogs/LayoutsDialog.tsx';
+import { bindAlerts } from './lib/alert-lines.ts';
+import { useAlerts } from './lib/alerts-store.ts';
+import { getChartLines } from './lib/chart-lines.ts';
 import { ServerClient } from './lib/client.ts';
 import { useParams } from './lib/params.ts';
 import { useUi } from './lib/store.ts';
-import { Watchlist } from './panels/Watchlist.tsx';
 import { ReplayBar } from './ReplayBar.tsx';
+import { RightDock } from './RightDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
+import { Toasts } from './Toasts.tsx';
 
 export function App() {
     const client = useMemo(() => new ServerClient(), []);
@@ -24,6 +29,7 @@ export function App() {
     const bottomHeight = useUi((s) => s.bottomHeight);
     const dialog = useUi((s) => s.dialog);
     const setDialog = useUi((s) => s.setDialog);
+    const alertDraft = useUi((s) => s.alertDraft);
 
     useEffect(() => {
         let cancelled = false;
@@ -48,8 +54,20 @@ export function App() {
         };
     }, [client]);
 
+    // Alerts live on the server: keep the list and log current, and announce fires.
+    useEffect(() => useAlerts.getState().start(client), [client]);
+    // Draw alert levels on the charts and follow drawings that alerts are attached to.
+    useEffect(() => (workspace ? bindAlerts(workspace, client) : undefined), [workspace, client]);
+
     useEffect(() => {
-        (window as any).__ts = { client, workspace, ui: useUi, params: useParams };
+        (window as any).__ts = {
+            client,
+            workspace,
+            ui: useUi,
+            params: useParams,
+            alerts: useAlerts,
+            chartLines: getChartLines,
+        };
     }, [client, workspace]);
 
     // The chart must re-measure itself when a panel beside or below it opens or closes.
@@ -88,8 +106,8 @@ export function App() {
                         {workspace && replayOpen && <ReplayBar workspace={workspace} />}
                         {workspace && bottomPanel && <BottomPanel client={client} workspace={workspace} />}
                     </div>
-                    {providers && rightPanel === 'watchlist' && (
-                        <Watchlist client={client} workspace={workspace} providers={providers} />
+                    {providers && rightPanel && (
+                        <RightDock client={client} workspace={workspace} providers={providers} />
                     )}
                 </div>
                 <StatusBar client={client} />
@@ -102,6 +120,10 @@ export function App() {
                 {workspace && dialog === 'chartType' && (
                     <ChartTypeDialog client={client} workspace={workspace} onClose={closeDialog} />
                 )}
+                {workspace && dialog === 'alert' && alertDraft && (
+                    <AlertDialog client={client} workspace={workspace} draft={alertDraft} onClose={closeDialog} />
+                )}
+                <Toasts />
             </div>
         </AppContext.Provider>
     );

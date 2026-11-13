@@ -628,3 +628,185 @@ select.text:focus {
     font-size: 12px;
     resize: vertical;
 }
+
+/* ── right dock tabs, alerts, toasts ───────────────────────────────────── */
+.dock-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 4px;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+}
+.dock-tabs .spacer {
+    flex: 1;
+}
+.dock-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.alert-item {
+    padding: 7px 10px;
+    border-bottom: 1px solid #1a2028;
+}
+.alert-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.alert-name {
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.alert-meta {
+    color: var(--muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.log-message {
+    color: var(--text);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.alert-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    margin-top: 3px;
+}
+.alert-foot .grow {
+    flex: 1;
+}
+.pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 0 6px;
+    border-radius: 8px;
+    line-height: 16px;
+    flex: none;
+}
+.pill-on {
+    background: #12382f;
+    color: var(--green);
+}
+.pill-off {
+    background: #29313c;
+    color: var(--muted);
+}
+.pill-done {
+    background: #3a2f12;
+    color: var(--amber);
+}
+.link {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+}
+.link:hover {
+    text-decoration: underline;
+}
+.link.danger {
+    color: var(--red);
+}
+.condition-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: #10151b;
+}
+.condition-row .join {
+    font-weight: 700;
+}
+.operand {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+input.num {
+    width: 120px;
+}
+input.num-sm {
+    width: 68px;
+}
+textarea.text {
+    background: #0e1116;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    font: inherit;
+    width: 100%;
+    resize: vertical;
+}
+.notify-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+    margin-bottom: 4px;
+}
+.notify-grid input.text {
+    width: 100%;
+}
+input.text:disabled {
+    opacity: 0.5;
+}
+.toasts {
+    position: fixed;
+    right: 14px;
+    bottom: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 6000;
+    width: 340px;
+    max-width: calc(100vw - 28px);
+}
+.toast {
+    background: #1b222b;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.toast-alert {
+    border-left-color: var(--amber);
+}
+.toast-error {
+    border-left-color: var(--red);
+}
+.toast-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    gap: 8px;
+}
+.toast-text {
+    color: var(--text);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+    margin-top: 2px;
+}
+
+.panel-head {
+    flex-wrap: wrap;
+}

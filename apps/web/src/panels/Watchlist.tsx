@@ -3,7 +3,6 @@ import { decimalsOf, newId, type SymbolInfo } from '@ts/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripChartType } from '../lib/chart-types.ts';
 import type { ServerClient } from '../lib/client.ts';
-import { useUi } from '../lib/store.ts';
 
 type Item = { kind: 'symbol'; symbol: string; flag?: string } | { kind: 'section'; title: string };
 interface List {
@@ -78,7 +77,6 @@ export function Watchlist({
     const quotes = useRef(new Map<string, Quote>());
     const dirty = useRef(false);
     const dragFrom = useRef<number | null>(null);
-    const toggle = useUi((s) => s.toggleRightPanel);
 
     // Load once; save (debounced) on every change.
     useEffect(() => {
@@ -89,7 +87,13 @@ export function Watchlist({
             try {
                 loaded = raw ? sanitize(JSON.parse(raw)) : null;
             } catch {}
-            setDoc(loaded ?? DEFAULT_DOC(providers));
+            if (loaded) setDoc(loaded);
+            else {
+                // First run: store the starter list at once, so other features (watchlist alerts) can read it.
+                const starter = DEFAULT_DOC(providers);
+                client.kvSet(KV_KEY, JSON.stringify(starter));
+                setDoc(starter);
+            }
         });
         return () => {
             cancelled = true;
@@ -237,10 +241,10 @@ export function Watchlist({
         });
     };
 
-    if (!doc || !list) return <div className="right-dock" />;
+    if (!doc || !list) return <div className="dock-content" />;
 
     return (
-        <div className="right-dock" data-testid="watchlist">
+        <div className="dock-content" data-testid="watchlist">
             <div className="panel-head">
                 <select
                     className="text grow"
@@ -290,9 +294,6 @@ export function Watchlist({
                     }}
                 >
                     🗑
-                </button>
-                <button type="button" className="icon-btn" title="Close" onClick={() => toggle('watchlist')}>
-                    ×
                 </button>
             </div>
             <div className="wl-add">
