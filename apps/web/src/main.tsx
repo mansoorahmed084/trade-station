@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { App } from './App.tsx';
+import './styles.css';
 
-createRoot(document.getElementById('root')!).render(
-    <div style={{ padding: 24, fontFamily: 'system-ui' }}>Trade Station — scaffolding</div>,
-);
+createRoot(document.getElementById('root')!).render(<App />);

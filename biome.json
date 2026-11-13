@@ -37,7 +37,9 @@
             "complexity": {
                 "noForEach": "off"
             },
-            "a11y": "off",
+            "a11y": {
+                "recommended": false
+            },
             "correctness": {
                 "useExhaustiveDependencies": "off"
             }

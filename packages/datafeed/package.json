@@ -1,0 +1,12 @@
+{
+    "name": "@ts/datafeed",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "dependencies": {
+        "undici": "^8.12.4"
+    }
+}

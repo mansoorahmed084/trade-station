@@ -1,0 +1,17 @@
+{
+    "name": "@ts/server",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "node --watch-path=src --watch-path=../../packages src/main.ts",
+        "start": "node src/main.ts"
+    },
+    "devDependencies": {
+        "@types/ws": "^8.18.2"
+    },
+    "dependencies": {
+        "fastify": "^5.12.8",
+        "ws": "^8.23.0"
+    }
+}
