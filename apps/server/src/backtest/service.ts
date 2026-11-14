@@ -27,7 +27,7 @@ import {
 import { barOpenTime, newId, normalizeTimeframe, timeframeMs } from '@ts/core';
 import type { MarketDataService } from '@ts/datafeed';
 import { describeScript } from '@ts/script-engine';
-import type { RunJob } from './execute.ts';
+import type { RunJob, StrategyPosition } from './execute.ts';
 import { WorkerPool } from './pool.ts';
 
 const MAX_SOURCE = 400_000;
@@ -122,6 +122,19 @@ export class BacktestService {
         result.ms = performance.now() - started;
         this.runs++;
         return result;
+    }
+
+    /**
+     * Where a strategy stands after the last closed bar: the position it wants to hold. Market
+     * orders are taken to fill at the close of the bar that placed them, so a signal on this bar
+     * already shows in the answer.
+     */
+    async position(input: BacktestRequest): Promise<StrategyPosition> {
+        const request = await this.resolve({
+            ...input,
+            properties: { ...input.properties, processOrdersOnClose: true },
+        });
+        return (await this.pool.run(this.job(request, windowKey(request), 'position'))) as StrategyPosition;
     }
 
     /** Start a parameter search. Returns at once; follow it with `status` or the `backtest` topic. */

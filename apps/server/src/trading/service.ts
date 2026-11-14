@@ -4,8 +4,11 @@ import {
     type AccountState,
     type BrokerPort,
     checkLimits,
+    cleanRules,
     DEFAULT_LIMITS,
+    DEFAULT_RISK,
     type Execution,
+    type Halt,
     type ModifyOrderRequest,
     type OrderLimits,
     type OrderState,
@@ -14,8 +17,11 @@ import {
     type PaperSnapshot,
     type PlaceOrderRequest,
     type PositionState,
+    RiskManager,
+    type RiskRules,
 } from '@ts/oms';
 import type { Db } from '../db.ts';
+import type { AuditLog } from './audit.ts';
 
 /** What clients hear on the `trading` topic. */
 export type TradingEvent =
@@ -23,7 +29,8 @@ export type TradingEvent =
     | { type: 'execution'; accountId: string; execution: Execution }
     | { type: 'position'; accountId: string; position: PositionState }
     | { type: 'account'; accountId: string; account: AccountState }
-    | { type: 'reset'; accountId: string };
+    | { type: 'reset'; accountId: string }
+    | { type: 'halt'; accountId: string; halt: Halt | null };
 
 export interface TradingState {
     account: AccountState;
@@ -35,11 +42,14 @@ export interface TradingState {
 export interface TradingDeps {
     data: MarketDataService;
     db: Db;
+    audit?: AuditLog;
     publish?(event: TradingEvent): void;
     log?(message: string): void;
 }
 
 const PAPER_KEY = 'trading.paper';
+const RISK_KEY = 'trading.risk';
+const HALT_KEY = 'trading.halt';
 const LIMITS_KEY = 'trading.limits';
 /** Position and account updates are sent at most this often per position; orders and fills at once. */
 const THROTTLE_MS = 250;
@@ -55,7 +65,10 @@ const fail = (message: string, statusCode = 400) => Object.assign(new Error(mess
  */
 export class TradingService {
     readonly paper: PaperBroker;
+    readonly risk: RiskManager;
     limits: OrderLimits;
+    /** Told when the kill switch is thrown, so whatever trades automatically stops. */
+    readonly onHalt = new Set<(halt: Halt) => void>();
     private deps: TradingDeps;
     private accounts = new Map<string, BrokerPort>();
     private feeds = new Map<string, { stop: Unsubscribe; linger?: ReturnType<typeof setTimeout> }>();
@@ -80,6 +93,11 @@ export class TradingService {
             now: () => deps.data.clock(),
         });
         this.limits = { ...DEFAULT_LIMITS, ...deps.db.kvJson<OrderLimits>(LIMITS_KEY, {}) };
+        this.risk = new RiskManager({ ...DEFAULT_RISK, ...deps.db.kvJson<RiskRules>(RISK_KEY, {}) }, () =>
+            deps.data.clock(),
+        );
+        // A halt survives a restart: nothing trades automatically again until someone resumes.
+        this.risk.halt = deps.db.kvJson<Halt | null>(HALT_KEY, null);
         const saved = deps.db.kvJson<PaperSnapshot | null>(PAPER_KEY, null);
         if (saved) {
             try {
@@ -154,6 +172,179 @@ export class TradingService {
         const placed = await broker.placeOrder(order);
         this.refreshFeeds();
         return placed;
+    }
+
+    /**
+     * Place an order on behalf of something automatic: a strategy or a webhook. It must pass the
+     * risk rules (and the per-order limits) first; nothing automatic can reach an account another way.
+     * Refusals are recorded in the audit log and come back as a rejected order.
+     */
+    async placeAutomated(accountId: string, request: PlaceOrderRequest, actor: string): Promise<OrderState> {
+        const broker = this.accounts.get(accountId);
+        if (!broker) throw fail(`no account "${accountId}"`, 404);
+        const symbol = this.tradable(request.symbol);
+        const order: PlaceOrderRequest = { ...request, symbol };
+        const price = await this.ensurePrice(symbol);
+        const ref = order.limit ?? order.stop ?? price;
+        const position = broker.positions().find((p) => p.symbol === symbol)?.qty ?? 0;
+        const breach =
+            this.risk.check({ order, price: ref, position, account: broker.account() }) ??
+            checkLimits(this.limits, broker.account(), order, ref);
+        const detail = {
+            side: order.side,
+            type: order.type,
+            qty: order.qty,
+            limit: order.limit,
+            stop: order.stop,
+            price: ref,
+        };
+        if (breach) {
+            this.deps.audit?.record({
+                actor,
+                action: 'place',
+                account: accountId,
+                symbol,
+                outcome: 'rejected',
+                detail: { ...detail, reason: breach },
+            });
+            const now = this.deps.data.clock();
+            return {
+                id: `refused-${now}`,
+                accountId,
+                symbol,
+                side: order.side,
+                type: order.type,
+                qty: Number(order.qty),
+                filledQty: 0,
+                avgFillPrice: null,
+                tif: order.tif ?? 'GTC',
+                status: 'rejected',
+                reason: breach,
+                role: 'entry',
+                reduceOnly: !!order.reduceOnly,
+                source: order.source ?? 'strategy',
+                createdAt: now,
+                updatedAt: now,
+            };
+        }
+        try {
+            const placed = await broker.placeOrder(order);
+            this.deps.audit?.record({
+                actor,
+                action: 'place',
+                account: accountId,
+                symbol,
+                outcome: placed.status === 'rejected' ? 'rejected' : 'ok',
+                detail: {
+                    ...detail,
+                    order: placed.id,
+                    status: placed.status,
+                    fill: placed.avgFillPrice,
+                    reason: placed.reason,
+                },
+            });
+            this.refreshFeeds();
+            return placed;
+        } catch (err: any) {
+            this.deps.audit?.record({
+                actor,
+                action: 'place',
+                account: accountId,
+                symbol,
+                outcome: 'error',
+                detail: { ...detail, reason: err?.message },
+            });
+            throw err;
+        }
+    }
+
+    /**
+     * The kill switch: halt everything automatic, cancel every working order on every account and,
+     * if asked, close every position. Stays in force (across restarts) until `resume`.
+     */
+    async kill(
+        options: { flatten?: boolean; reason?: string; by?: string } = {},
+    ): Promise<{ halt: Halt; cancelled: number; closed: number; errors: string[] }> {
+        const halt: Halt = {
+            at: this.deps.data.clock(),
+            reason: options.reason?.slice(0, 200) || 'kill switch',
+            by: options.by ?? 'user',
+        };
+        this.risk.halt = halt;
+        this.deps.db.kvSet(HALT_KEY, JSON.stringify(halt));
+        for (const listener of this.onHalt) {
+            try {
+                listener(halt);
+            } catch {}
+        }
+        let cancelled = 0;
+        let closed = 0;
+        const errors: string[] = [];
+        for (const broker of this.accounts.values()) {
+            // Entries first: cancelling one also cancels the exits waiting for it.
+            const open = broker
+                .orders()
+                .filter((o) => o.status === 'working' || o.status === 'inactive')
+                .sort((a, b) => Number(!!a.parentId) - Number(!!b.parentId));
+            for (const o of open) {
+                const current = broker.orders().find((x) => x.id === o.id);
+                if (current?.status !== 'working' && current?.status !== 'inactive') continue;
+                try {
+                    await broker.cancelOrder(o.id);
+                    cancelled++;
+                } catch (err: any) {
+                    errors.push(`${broker.name}: could not cancel ${o.id}: ${err?.message ?? err}`);
+                }
+            }
+            if (options.flatten) {
+                for (const p of broker.positions()) {
+                    try {
+                        await this.ensurePrice(p.symbol);
+                        const order = await broker.closePosition(p.symbol);
+                        if (order && order.status !== 'rejected') closed++;
+                        else if (order) errors.push(`${broker.name}: could not close ${p.symbol}: ${order.reason}`);
+                    } catch (err: any) {
+                        errors.push(`${broker.name}: could not close ${p.symbol}: ${err?.message ?? err}`);
+                    }
+                }
+            }
+        }
+        this.deps.audit?.record({
+            actor: halt.by,
+            action: 'kill switch',
+            outcome: errors.length ? 'error' : 'ok',
+            detail: { reason: halt.reason, flatten: !!options.flatten, cancelled, closed, errors },
+        });
+        this.send({ type: 'halt', accountId: '*', halt });
+        this.refreshFeeds();
+        return { halt, cancelled, closed, errors };
+    }
+
+    /** Allow automatic trading again after a halt. */
+    resume(by = 'user'): void {
+        const was = this.risk.halt;
+        this.risk.halt = null;
+        this.deps.db.kvDelete(HALT_KEY);
+        this.deps.audit?.record({ actor: by, action: 'resume', outcome: 'ok', detail: { halted: was } });
+        this.send({ type: 'halt', accountId: '*', halt: null });
+    }
+
+    setRisk(rules: unknown, by = 'user'): RiskRules {
+        const clean = cleanRules(rules);
+        this.risk.rules = clean;
+        this.deps.db.kvSet(RISK_KEY, JSON.stringify(clean));
+        this.deps.audit?.record({
+            actor: by,
+            action: 'risk rules',
+            outcome: 'ok',
+            detail: clean as Record<string, unknown>,
+        });
+        return clean;
+    }
+
+    /** The account by id, without the screen check: for automation that was set up from that account's screen. */
+    broker(id: string): BrokerPort | undefined {
+        return this.accounts.get(id);
     }
 
     async modify(

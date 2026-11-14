@@ -24,10 +24,22 @@ export interface RunJob {
     /** The server's clock when the job was made. */
     now: number;
     /** `summary` returns only the numbers a parameter search ranks by. */
-    detail: 'full' | 'summary';
+    /** `position`: only where the strategy stands after the last bar (for following it live). */
+    detail: 'full' | 'summary' | 'position';
 }
 
-export type RunOutput = BacktestResult | { summary: RunSummary };
+/** Where a strategy stands after the last bar of a run. */
+export interface StrategyPosition {
+    /** Signed units held after the last bar. */
+    position: number;
+    /** Open time of the last bar. */
+    time: number;
+    /** Close of the last bar. */
+    price: number;
+    bars: number;
+}
+
+export type RunOutput = BacktestResult | { summary: RunSummary } | StrategyPosition;
 
 const NATIVE_DEFAULTS: BacktestResult['properties'] = {
     initialCapital: 10_000,
@@ -122,6 +134,15 @@ export async function execute(job: RunJob, data: ScriptData): Promise<RunOutput>
             intrabar,
         });
         engineMs = performance.now() - t0;
+        if (job.detail === 'position') {
+            const n = bars.length;
+            return {
+                position: run.broker.position,
+                time: n ? bars.time[n - 1] : 0,
+                price: n ? bars.close[n - 1] : 0,
+                bars: n,
+            };
+        }
         trades = run.trades;
         title = strategy.name;
         inputs = strategy.inputs.map((i) => ({ ...i, value: values[i.name] }));
@@ -158,6 +179,16 @@ export async function execute(job: RunJob, data: ScriptData): Promise<RunOutput>
         throw fail('This script is an indicator. The tester runs scripts that start with strategy(...).');
     }
     engineMs = run.ms;
+    if (job.detail === 'position') {
+        const n = run.times.length;
+        const closes = await data.getBars(symbol, tf, window);
+        return {
+            position: run.strategy.positionSize ?? 0,
+            time: n ? run.times[n - 1] : 0,
+            price: closes.length ? closes.close[closes.length - 1] : 0,
+            bars: n,
+        };
+    }
     const cfg = run.strategy.properties as Record<string, any>;
     properties = {
         initialCapital: run.strategy.initialCapital,

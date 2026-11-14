@@ -34,6 +34,17 @@ const MIGRATIONS: string[] = [
         data TEXT NOT NULL
     )`,
     'CREATE INDEX alert_log_time ON alert_log (time DESC)',
+    `CREATE TABLE audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        time INTEGER NOT NULL,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        account TEXT,
+        symbol TEXT,
+        outcome TEXT NOT NULL,
+        detail TEXT
+    )`,
+    'CREATE INDEX audit_time ON audit (time DESC)',
 ];
 
 export function registerMigration(sql: string): void {

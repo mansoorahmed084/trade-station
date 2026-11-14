@@ -5,14 +5,18 @@ import { BarStore, BinanceAdapter, type MarketDataAdapter, MarketDataService, Sy
 import { BinanceSpotBroker } from '@ts/oms';
 import { ScriptHost } from '@ts/script-engine';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { AutomationService } from './automation/runner.ts';
+import { WebhookService } from './automation/webhook.ts';
 import { BacktestService } from './backtest/service.ts';
 import type { Config } from './config.ts';
 import { Db } from './db.ts';
 import { Gateway, isLocalOrigin } from './gateway.ts';
 import { createAlerts, registerAlertRoutes } from './routes/alerts.ts';
+import { registerAutomationRoutes } from './routes/automation.ts';
 import { registerBacktestRoutes } from './routes/backtest.ts';
 import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
 import { registerTradingRoutes } from './routes/trading.ts';
+import { AuditLog } from './trading/audit.ts';
 import { TradingService } from './trading/service.ts';
 
 export interface App {
@@ -25,6 +29,9 @@ export interface App {
     alerts: AlertEngine;
     backtest: BacktestService;
     trading: TradingService;
+    audit: AuditLog;
+    automation: AutomationService;
+    webhooks: WebhookService;
     config: Config;
     listen(): Promise<string>;
     close(): Promise<void>;
@@ -37,6 +44,8 @@ export interface AppOverrides {
     lingerMs?: number;
     /** Backtest worker threads. */
     workers?: number;
+    /** The market clock (tests move it by hand). */
+    now?: () => number;
 }
 
 const MIME: Record<string, string> = {
@@ -73,6 +82,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         store,
         log,
         lingerMs: overrides.lingerMs ?? 5 * 60_000,
+        now: overrides.now,
     });
     const server = Fastify({ logger: false, bodyLimit: 8 * 1024 * 1024 });
     const gateway = new Gateway(server.server, data);
@@ -82,6 +92,9 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     // The server has no login: it trusts whoever can reach it. So when bound to loopback, refuse
     // requests that arrive under a foreign Host (DNS rebinding) or from a foreign page (CSRF).
     server.addHook('onRequest', async (req, reply) => {
+        // Inbound webhooks come from outside (through a tunnel, under its host name). They carry
+        // their own secret, and a browser page cannot read their answer, so the host check is not theirs.
+        if (req.method === 'POST' && req.url.startsWith('/api/webhook/')) return;
         if (isLoopback(config.host)) {
             const host = (req.headers.host ?? '').replace(/:\d+$/, '');
             if (host && !isLoopback(host) && !host.endsWith('.localhost') && host !== '[::1]') {
@@ -245,7 +258,8 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     registerBacktestRoutes(server, backtest);
     backtest_stats = () => backtest.stats();
 
-    const trading = new TradingService({ data, db, publish: (event) => gateway.publish('trading', event), log });
+    const audit = new AuditLog(db);
+    const trading = new TradingService({ data, db, audit, publish: (event) => gateway.publish('trading', event), log });
     // Exchange accounts, when their keys are in the environment. The testnet is never real money.
     const exchanges: BinanceSpotBroker[] = [];
     for (const [key, live] of [
@@ -266,8 +280,23 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         exchanges.push(broker);
         broker.start().catch((err) => log(`${broker.name} could not be read: ${err?.message ?? err}`));
     }
-    registerTradingRoutes(server, trading);
+    registerTradingRoutes(server, trading, audit);
     await trading.start();
+
+    const automation = new AutomationService({
+        data,
+        db,
+        backtest,
+        trading,
+        audit,
+        scriptSource: (id) => scripts.get(id)?.source,
+        publish: (event) => gateway.publish('automation', event),
+        notifier: config.notifier,
+        log,
+    });
+    const webhooks = new WebhookService({ db, data, trading, audit });
+    registerAutomationRoutes(server, automation, webhooks);
+    await automation.start();
 
     const alerts = createAlerts({ db, data, scriptHost, scripts, gateway, notifier: config.notifier, log });
     registerAlertRoutes(server, { ...alerts, data, gateway, notifier: config.notifier });
@@ -284,6 +313,9 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         alerts: alerts.engine,
         backtest,
         trading,
+        audit,
+        automation,
+        webhooks,
         config,
         async listen() {
             return server.listen({ host: config.host, port: config.port });
@@ -291,6 +323,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         async close() {
             alerts.engine.stop();
             backtest.close();
+            automation.close();
             for (const x of exchanges) x.close();
             trading.close();
             gateway.close();
