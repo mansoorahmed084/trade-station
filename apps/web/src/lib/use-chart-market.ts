@@ -3,20 +3,26 @@ import { normalizeTimeframe } from '@ts/core';
 import { useEffect, useState } from 'react';
 import { stripChartType } from './chart-types.ts';
 
-/** The symbol and timeframe of the active chart, without any chart-type suffix. */
+function readMarket(workspace: VelaWorkspace): { symbol: string; timeframe: string } | null {
+    const m = (workspace.chart as any)?.market;
+    const symbol = stripChartType(String(m?.symbol ?? ''));
+    if (!symbol) return null;
+    let timeframe = String(m?.timeframe ?? '60');
+    try {
+        timeframe = normalizeTimeframe(timeframe);
+    } catch {}
+    return { symbol, timeframe };
+}
+
+/** The symbol and timeframe of the active chart, without any chart-type suffix. Known from the first render. */
 export function useChartMarket(workspace: VelaWorkspace): { symbol: string; timeframe: string } | null {
-    const [market, setMarket] = useState<{ symbol: string; timeframe: string } | null>(null);
+    const [market, setMarket] = useState(() => readMarket(workspace));
     useEffect(() => {
         const read = () => {
-            const m = (workspace.chart as any)?.market;
-            const symbol = stripChartType(String(m?.symbol ?? ''));
-            if (!symbol) return;
-            let timeframe = String(m?.timeframe ?? '60');
-            try {
-                timeframe = normalizeTimeframe(timeframe);
-            } catch {}
+            const next = readMarket(workspace);
+            if (!next) return;
             setMarket((prev) =>
-                prev && prev.symbol === symbol && prev.timeframe === timeframe ? prev : { symbol, timeframe },
+                prev && prev.symbol === next.symbol && prev.timeframe === next.timeframe ? prev : next,
             );
         };
         read();

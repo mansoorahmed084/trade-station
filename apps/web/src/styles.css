@@ -1283,6 +1283,7 @@ input.text:disabled {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 .tk-head .spacer,
 .dom-head .spacer,

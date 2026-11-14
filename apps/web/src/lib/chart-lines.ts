@@ -233,11 +233,19 @@ export function getChartMarkers(chart: any): ChartMarker[] {
     return (chart && byChart.get(chart)?.markers) ?? [];
 }
 
+/** The layer canvases of a cell that are on screen and have drawn a frame (a replaced chart can leave old ones behind). */
+function liveCanvases(host: Element): HTMLCanvasElement[] {
+    return [...host.querySelectorAll<HTMLCanvasElement>(`canvas[data-ts-layer="${LAYER}"]`)].filter((c) => {
+        if (!frames.has(c) || !c.isConnected) return false;
+        const box = c.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && getComputedStyle(c).visibility !== 'hidden';
+    });
+}
+
 /** The line (and the part of it) under a pointer, from the last frame drawn in that cell. */
 function hitTest(host: Element, clientX: number, clientY: number) {
-    for (const canvas of host.querySelectorAll<HTMLCanvasElement>(`canvas[data-ts-layer="${LAYER}"]`)) {
-        const frame = frames.get(canvas);
-        if (!frame) continue;
+    for (const canvas of liveCanvases(host)) {
+        const frame = frames.get(canvas)!;
         const box = canvas.getBoundingClientRect();
         const x = clientX - box.left;
         const y = clientY - box.top;
@@ -351,9 +359,8 @@ export function bindChartLineInteraction(ws: { cells(): unknown[] }): () => void
 /** Where each line's label was last drawn in a cell, in page coordinates (for tests and tooling). */
 export function lineBoxes(host: Element): { id: string; x: number; y: number; closeX?: number; price: number }[] {
     const out: { id: string; x: number; y: number; closeX?: number; price: number }[] = [];
-    for (const canvas of host.querySelectorAll<HTMLCanvasElement>(`canvas[data-ts-layer="${LAYER}"]`)) {
-        const frame = frames.get(canvas);
-        if (!frame) continue;
+    for (const canvas of liveCanvases(host)) {
+        const frame = frames.get(canvas)!;
         const box = canvas.getBoundingClientRect();
         for (const hit of frame.hits) {
             out.push({

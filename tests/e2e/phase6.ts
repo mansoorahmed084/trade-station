@@ -105,6 +105,13 @@ try {
     // ── Order ticket ───────────────────────────────────────────────────────
     await page.click('#vela-action-ts\\.trade');
     await page.waitForSelector('[data-testid="order-ticket"]');
+    await page
+        .waitForFunction(
+            (symbol) => document.querySelector('[data-testid="ticket-symbol"]')?.textContent === symbol,
+            SYMBOL,
+            { timeout: 5000 },
+        )
+        .catch(() => {});
     const ticketSymbol = await page.textContent('[data-testid="ticket-symbol"]');
     const badge = await page.textContent('[data-testid="order-ticket"] [data-testid="account-badge"]');
     check(
@@ -134,10 +141,16 @@ try {
         `"${label}"; toast "${toast?.trim()}"; line "${posLine?.text}" ${posLine?.badge?.text ?? ''}`,
     );
 
+    // Prices close to the market, so every line sits well inside the one-minute chart's price range.
+    const now = await last();
+    const cents = (v: number) => (Math.round(v * 100) / 100).toFixed(2);
     await page.click('[data-testid="ticket-type-limit"]');
     await page.check('[data-testid="ticket-tp-on"]');
     await page.check('[data-testid="ticket-sl-on"]');
     await page.fill('[data-testid="ticket-qty"]', '1');
+    await page.fill('[data-testid="ticket-limit"]', cents(now * 0.9985));
+    await page.fill('[data-testid="ticket-tp"]', cents(now * 1.003));
+    await page.fill('[data-testid="ticket-sl"]', cents(now * 0.996));
     const limitValue = Number(await page.inputValue('[data-testid="ticket-limit"]'));
     await page.click('[data-testid="ticket-submit"]');
     s = await until(store, (x) =>
@@ -159,27 +172,38 @@ try {
     );
 
     // ── Drag a line to change the order ────────────────────────────────────
-    const lineBox = (await until(boxes, (b) => b.some((x) => x.id === `${entry.id}:limit`))).find(
-        (x) => x.id === `${entry.id}:limit`,
-    );
+    await until(boxes, (b) => b.some((x) => x.id === `${entry.id}:limit`));
+    // Let the price scale settle after the new lines, then take the line's position from the latest frame.
+    await wait(600);
+    const lineBox = (await boxes()).find((x) => x.id === `${entry.id}:limit`);
     const before = await inPage<any>(page, () => (window as any).__ts.workspace.chart.getVisibleRange());
+    const canvases = await inPage<number>(
+        page,
+        () =>
+            (window as any).__ts.workspace.cells()[0].host.querySelectorAll('canvas[data-ts-layer="ts-lines"]').length,
+    );
     await page.mouse.move(lineBox.x, lineBox.y);
     await page.mouse.down();
-    await page.mouse.move(lineBox.x, lineBox.y + 15, { steps: 3 });
-    await page.mouse.move(lineBox.x, lineBox.y + 30, { steps: 3 });
+    await page.mouse.move(lineBox.x, lineBox.y + 10, { steps: 3 });
+    await page.mouse.move(lineBox.x, lineBox.y + 20, { steps: 3 });
     await page.mouse.up();
     s = await until(store, (x) => x.orders[entry.id]?.limit < entry.limit - 1e-9);
     const after = await inPage<any>(page, () => (window as any).__ts.workspace.chart.getVisibleRange());
+    const toastsNow = await inPage<string[]>(page, () =>
+        (window as any).__ts.alerts.getState().toasts.map((t: any) => `${t.title}: ${t.text}`),
+    );
     check(
         'dragging the order line down lowers the limit price, without panning the chart',
         s.orders[entry.id].limit < entry.limit &&
             s.orders[entry.id].status === 'working' &&
             before.from === after.from &&
             before.to === after.to,
-        `limit ${entry.limit} → ${s.orders[entry.id].limit}`,
+        `limit ${entry.limit} → ${s.orders[entry.id].limit}; pressed at y=${Math.round(lineBox.y)}; ${canvases} layer canvas(es); chart ${before.from === after.from ? 'did not move' : 'moved'}${toastsNow.length ? `; toasts: ${toastsNow.join(' / ')}` : ''}`,
     );
 
-    const tpBox = (await boxes()).find((x) => x.id === `${entry.id}-tp`);
+    const tpBox = (await until(boxes, (b) => b.some((x) => x.id === `${entry.id}-tp`))).find(
+        (x) => x.id === `${entry.id}-tp`,
+    );
     await page.mouse.click(tpBox.closeX, tpBox.y);
     s = await until(store, (x) => x.orders[`${entry.id}-tp`]?.status === 'cancelled');
     check(
