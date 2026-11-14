@@ -10,6 +10,14 @@ export interface Config {
     webDir: string;
     /** Credentials for outside notification channels. Read from the environment, never stored or returned by the API. */
     notifier: { telegramToken?: string; smtpUrl?: string; smtpFrom?: string };
+    /**
+     * Exchange accounts to trade through. Keys come from the environment only and are never stored
+     * or returned by the API. The live exchange also needs TS_ENABLE_LIVE=1.
+     */
+    brokers?: {
+        binanceTestnet?: { apiKey: string; apiSecret: string };
+        binanceLive?: { apiKey: string; apiSecret: string };
+    };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -26,6 +34,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             telegramToken: env.TS_TELEGRAM_TOKEN || undefined,
             smtpUrl: env.TS_SMTP_URL || undefined,
             smtpFrom: env.TS_SMTP_FROM || undefined,
+        },
+        brokers: {
+            binanceTestnet:
+                env.TS_BINANCE_TESTNET_KEY && env.TS_BINANCE_TESTNET_SECRET
+                    ? { apiKey: env.TS_BINANCE_TESTNET_KEY, apiSecret: env.TS_BINANCE_TESTNET_SECRET }
+                    : undefined,
+            binanceLive:
+                env.TS_ENABLE_LIVE === '1' && env.TS_BINANCE_LIVE_KEY && env.TS_BINANCE_LIVE_SECRET
+                    ? { apiKey: env.TS_BINANCE_LIVE_KEY, apiSecret: env.TS_BINANCE_LIVE_SECRET }
+                    : undefined,
         },
     };
 }

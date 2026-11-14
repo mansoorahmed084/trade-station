@@ -248,6 +248,26 @@ export function bindTrading(c: ServerClient): () => void {
     };
 }
 
+/**
+ * Switch this screen to another account. Every order from this screen then goes to that account
+ * only. Not remembered: each page starts on the paper account, so trading real money is always
+ * a choice made in the session.
+ */
+export async function switchAccount(id: string): Promise<void> {
+    const target = useTrading.getState().accounts.find((a) => a.id === id);
+    if (!target) return;
+    if (target.kind === 'live') {
+        const ok = await askToConfirm(
+            'Switch to a live account?',
+            [`Orders from this screen will go to ${target.name}, with real money.`],
+            true,
+        );
+        if (!ok) return;
+    }
+    useTrading.setState({ accountId: id, orders: {}, positions: {}, executions: [], account: target });
+    await loadTrading();
+}
+
 /** Ask the user; resolves false when they decline. */
 export function askToConfirm(title: string, lines: string[], danger = false): Promise<boolean> {
     return new Promise((resolve) => {

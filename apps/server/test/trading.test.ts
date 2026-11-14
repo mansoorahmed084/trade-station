@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { Emitter } from '@ts/core';
 import { SyntheticAdapter } from '@ts/datafeed';
 import type { BrokerEvents, BrokerPort, OrderState } from '@ts/oms';
+import { BinanceSpotBroker } from '@ts/oms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
+import { FakeBinance } from '../../../packages/oms/test/fake-binance.ts';
 import { type App, createApp } from '../src/app.ts';
 
 let dir: string;
@@ -211,6 +213,100 @@ describe('paper trading over the API', () => {
         // Only a screen switched to that very account gets through.
         expect((await call('POST', path, body, { 'x-ts-account': 'live-test' })).status).toBe(201);
         expect(placed).toHaveLength(1);
+    });
+
+    it('routes orders to an exchange sandbox account only from a screen switched to it', async () => {
+        const venue = new FakeBinance();
+        await venue.start();
+        // A server of its own, whose market data knows BINANCE:BTCUSDT (flat at 100).
+        const minute = 60_000;
+        const binanceData = {
+            name: 'BINANCE',
+            nativeTimeframes: ['1'],
+            listSymbols: async () => [
+                {
+                    symbol: 'BINANCE:BTCUSDT',
+                    provider: 'BINANCE',
+                    ticker: 'BTCUSDT',
+                    description: 'Bitcoin',
+                    type: 'crypto' as const,
+                    tickSize: 0.01,
+                    lotSize: 0.0001,
+                    minQty: 0.0001,
+                    currency: 'USDT',
+                    baseCurrency: 'BTC',
+                    timezone: 'Etc/UTC',
+                    session: '24x7',
+                },
+            ],
+            firstBarTime: async () => Date.now() - 1000 * minute,
+            getBars: async (_t: string, _tf: string, q: { from?: number; to?: number }) => {
+                const to = Math.floor(Math.min(q.to ?? Date.now(), Date.now()) / minute) * minute;
+                const from = Math.max(q.from ?? to - 10 * minute, to - 1000 * minute);
+                const out = [];
+                for (let t = Math.ceil(from / minute) * minute; t <= to; t += minute)
+                    out.push({ time: t, open: 100, high: 100, low: 100, close: 100, volume: 1 });
+                return out;
+            },
+            subscribeBars: () => () => {},
+        };
+        const dir2 = mkdtempSync(join(tmpdir(), 'ts-trading-sandbox-'));
+        const app2 = await createApp(
+            { host: '127.0.0.1', port: 0, dataDir: dir2, providers: [], webDir: join(dir2, 'no-web'), notifier: {} },
+            { adapters: [binanceData as any], log: () => {}, lingerMs: 0, workers: 1 },
+        );
+        const base2 = await app2.listen();
+        const call2 = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
+            const res = await fetch(`${base2}${path}`, {
+                method,
+                headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers },
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            const text = await res.text();
+            return { status: res.status, body: text ? JSON.parse(text) : null };
+        };
+        try {
+            const exchange = new BinanceSpotBroker({
+                id: 'sandbox-test',
+                apiKey: venue.apiKey,
+                apiSecret: venue.secret,
+                restBase: venue.url,
+                wsApiBase: venue.wsUrl,
+                WebSocket: WebSocket as any,
+                instrument: (symbol) => app2.data.symbolInfo(symbol),
+            });
+            app2.trading.register(exchange);
+            await exchange.start();
+            const accounts = (await call2('GET', '/api/trading/accounts')).body;
+            expect(accounts.find((a: any) => a.id === 'sandbox-test')).toMatchObject({
+                kind: 'sandbox',
+                balance: 10_000,
+            });
+            expect(JSON.stringify(accounts)).not.toContain(venue.secret);
+            expect(JSON.stringify(accounts)).not.toContain(venue.apiKey);
+            const body = { symbol: 'BINANCE:BTCUSDT', side: 'buy', type: 'market', qty: 0.5 };
+            expect((await call2('POST', '/api/trading/sandbox-test/orders', body)).status).toBe(403);
+            expect(
+                (await call2('POST', '/api/trading/sandbox-test/orders', body, { 'x-ts-account': 'paper' })).status,
+            ).toBe(403);
+            expect(venue.requests.some((r) => r.path === '/api/v3/order')).toBe(false);
+            const placed = await call2('POST', '/api/trading/sandbox-test/orders', body, {
+                'x-ts-account': 'sandbox-test',
+            });
+            expect(placed.status).toBe(201);
+            expect(placed.body).toMatchObject({ status: 'filled', filledQty: 0.5 });
+            const s = (await call2('GET', '/api/trading/sandbox-test', undefined, { 'x-ts-account': 'sandbox-test' }))
+                .body;
+            expect(s.account.kind).toBe('sandbox');
+            expect(s.executions[0]).toMatchObject({ qty: 0.5, price: 100 });
+            // The paper account knows nothing of it.
+            expect((await call2('GET', '/api/trading/paper')).body.orders).toEqual([]);
+            exchange.close();
+        } finally {
+            await app2.close();
+            await venue.stop();
+            rmSync(dir2, { recursive: true, force: true });
+        }
     });
 
     it('keeps the paper account, and its feeds, across a restart', async () => {

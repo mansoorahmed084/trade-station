@@ -12,6 +12,7 @@ import {
     reversePosition,
     saveLimits,
     setPositionBrackets,
+    switchAccount,
     useTrading,
 } from '../../lib/trading-store.ts';
 import { Button, Tabs } from '../../ui.tsx';
@@ -80,6 +81,7 @@ function PriceCell({
 export function AccountManager({ workspace }: { workspace: VelaWorkspace }) {
     const account = useTrading((s) => s.account);
     const accounts = useTrading((s) => s.accounts);
+    const accountId = useTrading((s) => s.accountId);
     const orders = useTrading((s) => s.orders);
     const positions = useTrading((s) => s.positions);
     const executions = useTrading((s) => s.executions);
@@ -113,15 +115,15 @@ export function AccountManager({ workspace }: { workspace: VelaWorkspace }) {
             <div className="acct-head">
                 <AccountBadge account={account} />
                 <select
-                    value={useTrading.getState().accountId}
+                    value={accountId}
                     aria-label="Account"
-                    onChange={() => {
-                        /* one account for now; live accounts appear here when a broker is connected */
-                    }}
+                    data-testid="account-select"
+                    onChange={(e) => void switchAccount(e.target.value).catch(() => {})}
                 >
                     {accounts.map((a) => (
                         <option key={a.id} value={a.id}>
                             {a.name}
+                            {a.kind === 'paper' ? '' : a.kind === 'sandbox' ? ' (testnet)' : ' (LIVE)'}
                         </option>
                     ))}
                 </select>

@@ -171,6 +171,10 @@ export interface BrokerPort {
     closePosition(symbol: string, qty?: number): Promise<OrderState | null>;
     /** Turn a long into a short of the same size, or the other way round, at the market. */
     reversePosition(symbol: string): Promise<OrderState | null>;
+    /** A trade printed on the market, for accounts that value positions or fill orders themselves. */
+    tick?(symbol: string, price: number, time?: number): void;
+    /** Symbols the account needs live prices for. */
+    watched?(): string[];
     /** Protect the whole position with a target and/or stop. `null` removes that leg. */
     setPositionBrackets(
         symbol: string,

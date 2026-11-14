@@ -113,11 +113,12 @@ export class TradingService {
                 this.queue(`${id}|a`, { type: 'account', accountId: id, account }),
             ),
         );
+        if (broker !== this.paper) this.refreshFeeds();
     }
 
     /** Start price feeds for whatever the saved paper account still holds. */
     async start(): Promise<void> {
-        await Promise.all(this.paper.watched().map((symbol) => this.ensurePrice(symbol).catch(() => {})));
+        await Promise.all([...this.watchedAll()].map((symbol) => this.ensurePrice(symbol).catch(() => {})));
         this.refreshFeeds();
     }
 
@@ -125,8 +126,10 @@ export class TradingService {
         return [...this.accounts.values()].map((a) => a.account());
     }
 
+    /** Reading an account spends nothing, so it needs no confirmation from the screen. */
     state(accountId: string): TradingState {
-        const broker = this.account(accountId);
+        const broker = this.accounts.get(accountId);
+        if (!broker) throw fail(`no account "${accountId}"`, 404);
         return {
             account: broker.account(),
             orders: broker.orders(),
@@ -335,7 +338,7 @@ export class TradingService {
         this.feed(symbol);
         const known = this.paper.lastPrice(symbol) ?? this.deps.data.lastPrice(symbol);
         if (known !== undefined) {
-            if (this.paper.lastPrice(symbol) === undefined) this.paper.tick(symbol, known, this.deps.data.clock());
+            if (this.paper.lastPrice(symbol) === undefined) this.tickAll(symbol, known, this.deps.data.clock());
             return known;
         }
         // No stream has printed yet: use the latest one-minute close.
@@ -343,12 +346,24 @@ export class TradingService {
             const bars = await this.deps.data.getBars(symbol, '1', { limit: 1 });
             const last = bars.last();
             if (last && this.paper.lastPrice(symbol) === undefined)
-                this.paper.tick(symbol, last.close, this.deps.data.clock());
+                this.tickAll(symbol, last.close, this.deps.data.clock());
         } catch {}
         return this.paper.lastPrice(symbol);
     }
 
-    /** Make sure live prices for the symbol reach the paper account. */
+    /** A live price, to every account that wants one. */
+    private tickAll(symbol: string, price: number, time: number): void {
+        for (const broker of this.accounts.values()) broker.tick?.(symbol, price, time);
+    }
+
+    /** Symbols any account needs live prices for. */
+    private watchedAll(): Set<string> {
+        const out = new Set<string>();
+        for (const broker of this.accounts.values()) for (const s of broker.watched?.() ?? []) out.add(s);
+        return out;
+    }
+
+    /** Make sure live prices for the symbol reach every account. */
     private feed(symbol: string): void {
         const existing = this.feeds.get(symbol);
         if (existing) {
@@ -361,22 +376,22 @@ export class TradingService {
         const { data } = this.deps;
         let stop: Unsubscribe;
         try {
-            stop = data.subscribeTrades(symbol, (tick) => this.paper.tick(symbol, tick.price, tick.time));
+            stop = data.subscribeTrades(symbol, (tick) => this.tickAll(symbol, tick.price, tick.time));
         } catch {
             // A venue without a trade stream: follow the forming one-minute bar instead.
-            stop = data.subscribe(symbol, '1', (bar) => this.paper.tick(symbol, bar.close, data.clock()));
+            stop = data.subscribe(symbol, '1', (bar) => this.tickAll(symbol, bar.close, data.clock()));
         }
         this.feeds.set(symbol, { stop });
     }
 
     /** Stop feeds nothing needs any more, after a grace period. */
     private refreshFeeds(): void {
-        const needed = new Set(this.paper.watched());
+        const needed = this.watchedAll();
         for (const symbol of needed) this.feed(symbol);
         for (const [symbol, feed] of this.feeds) {
             if (needed.has(symbol) || feed.linger) continue;
             feed.linger = setTimeout(() => {
-                if (this.paper.watched().includes(symbol)) {
+                if (this.watchedAll().has(symbol)) {
                     feed.linger = undefined;
                     return;
                 }

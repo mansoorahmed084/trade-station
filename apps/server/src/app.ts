@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import type { AlertEngine } from '@ts/alerts';
 import { BarStore, BinanceAdapter, type MarketDataAdapter, MarketDataService, SyntheticAdapter } from '@ts/datafeed';
+import { BinanceSpotBroker } from '@ts/oms';
 import { ScriptHost } from '@ts/script-engine';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { BacktestService } from './backtest/service.ts';
@@ -245,6 +246,26 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     backtest_stats = () => backtest.stats();
 
     const trading = new TradingService({ data, db, publish: (event) => gateway.publish('trading', event), log });
+    // Exchange accounts, when their keys are in the environment. The testnet is never real money.
+    const exchanges: BinanceSpotBroker[] = [];
+    for (const [key, live] of [
+        ['binanceTestnet', false],
+        ['binanceLive', true],
+    ] as const) {
+        const creds = config.brokers?.[key];
+        if (!creds) continue;
+        const store = `trading.${live ? 'binance' : 'binance-testnet'}.pending`;
+        const broker: BinanceSpotBroker = new BinanceSpotBroker({
+            ...creds,
+            live,
+            instrument: (symbol) => data.symbolInfo(symbol),
+            pending: { load: () => db.kvJson(store, {}), save: (v) => db.kvSet(store, JSON.stringify(v)) },
+            log,
+        });
+        trading.register(broker);
+        exchanges.push(broker);
+        broker.start().catch((err) => log(`${broker.name} could not be read: ${err?.message ?? err}`));
+    }
     registerTradingRoutes(server, trading);
     await trading.start();
 
@@ -270,6 +291,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         async close() {
             alerts.engine.stop();
             backtest.close();
+            for (const x of exchanges) x.close();
             trading.close();
             gateway.close();
             data.close();
