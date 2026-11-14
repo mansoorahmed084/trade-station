@@ -93,7 +93,7 @@ export const DEFAULT_BROKER: BrokerOptions = {
     checkFunds: false,
 };
 
-interface Lot {
+export interface Lot {
     qty: number;
     price: number;
     time: number;
@@ -103,6 +103,16 @@ interface Lot {
     commission: number;
     best: number;
     worst: number;
+}
+
+/** What `exportState` returns. */
+export interface EmulatorState {
+    lots: Lot[];
+    dir: 1 | -1 | 0;
+    realized: number;
+    last: number | null;
+    clock: number;
+    active: Order[];
 }
 
 const EPS = 1e-12;
@@ -174,6 +184,32 @@ export class BrokerEmulator {
 
     pending(): Order[] {
         return [...this.active];
+    }
+
+    /**
+     * Everything needed to carry on later: open lots, waiting orders, realised result and the last
+     * price. Fills and closed trades are history and are not included. Plain data: JSON-safe.
+     */
+    exportState(): EmulatorState {
+        return {
+            lots: this.lots.map((l) => ({ ...l })),
+            dir: this.dir,
+            realized: this.realized,
+            last: Number.isNaN(this.last) ? null : this.last,
+            clock: this.clock,
+            active: this.active.map((o) => ({ ...o })),
+        };
+    }
+
+    /** Continue from a state taken with `exportState`. Replaces whatever this emulator held. */
+    importState(state: EmulatorState): void {
+        this.lots = state.lots.map((l) => ({ ...l }));
+        this.dir = state.dir;
+        this.realized = state.realized;
+        this.last = state.last ?? Number.NaN;
+        this.clock = state.clock;
+        this.active = state.active.map((o) => ({ ...o }));
+        for (const order of this.active) this.orders.set(order.id, order);
     }
 
     private retire(order: Order): void {

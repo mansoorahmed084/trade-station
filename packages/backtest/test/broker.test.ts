@@ -302,3 +302,35 @@ describe('tick grid', () => {
         expect(none.submit({ id: 'a', side: 'buy', qty: 1, type: 'limit', limit: 97.123456 }).limit).toBe(97.123456);
     });
 });
+
+describe('state export', () => {
+    it('carries on after a round trip through JSON exactly as if it had never stopped', () => {
+        const feed = [100, 101.5, 99.2, 98.7, 102.3, 104.1, 103, 97.5, 96.2, 99.9, 105.4];
+        const build = () => {
+            const b = new BrokerEmulator({ tickSize: 0.1, commission: { type: 'percent', value: 0.1 } });
+            b.processTick(100, 0);
+            b.submit({ id: 'entry', side: 'buy', qty: 3, type: 'market' });
+            b.processTick(100.2, 1);
+            b.submit({ id: 'add', side: 'buy', qty: 1, type: 'limit', limit: 98.8 });
+            b.submit({ id: 'tp', side: 'sell', qty: 4, type: 'limit', limit: 105, reduceOnly: true, ocaGroup: 'x' });
+            b.submit({ id: 'sl', side: 'sell', qty: 4, type: 'stop', stop: 96, reduceOnly: true, ocaGroup: 'x' });
+            return b;
+        };
+        const straight = build();
+        const first = build();
+        const second = new BrokerEmulator({ tickSize: 0.1, commission: { type: 'percent', value: 0.1 } });
+        feed.forEach((p, i) => {
+            straight.processTick(p, 10 + i);
+            if (i < 4) first.processTick(p, 10 + i);
+            if (i === 3) second.importState(JSON.parse(JSON.stringify(first.exportState())));
+            if (i >= 4) second.processTick(p, 10 + i);
+        });
+        expect(second.position).toBe(straight.position);
+        expect(second.realizedPnl).toBeCloseTo(straight.realizedPnl, 9);
+        expect(second.pending().map((o) => o.id)).toEqual(straight.pending().map((o) => o.id));
+        expect(second.fills.map((f) => [f.orderId, f.price])).toEqual(
+            straight.fills.slice(first.fills.length).map((f) => [f.orderId, f.price]),
+        );
+        expect(straight.trades.length).toBeGreaterThan(0);
+    });
+});
