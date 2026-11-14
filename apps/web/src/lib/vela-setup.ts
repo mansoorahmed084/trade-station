@@ -91,6 +91,16 @@ export function setupVela(): void {
         order: 0,
         run: () => useUi.getState().toggleBottomPanel('editor'),
     });
+    registerIcon('ts-tester', icon('<path d="M2.5 13.5h11"/><path d="M4 11V7.5M8 11V3.5M12 11V6"/>'));
+    registerWidgetAction({
+        id: 'ts.tester',
+        target: 'topbar',
+        label: 'Strategy tester',
+        icon: 'ts-tester',
+        iconOnly: true,
+        order: 0.5,
+        run: () => useUi.getState().toggleBottomPanel('tester'),
+    });
     registerWidgetAction({
         id: 'ts.replay',
         target: 'topbar',

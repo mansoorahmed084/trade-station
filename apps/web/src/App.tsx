@@ -9,10 +9,11 @@ import { FormulaDialog } from './dialogs/FormulaDialog.tsx';
 import { LayoutsDialog } from './dialogs/LayoutsDialog.tsx';
 import { bindAlerts } from './lib/alert-lines.ts';
 import { useAlerts } from './lib/alerts-store.ts';
-import { getChartLines } from './lib/chart-lines.ts';
+import { getChartLines, getChartMarkers } from './lib/chart-lines.ts';
 import { ServerClient } from './lib/client.ts';
 import { useParams } from './lib/params.ts';
 import { useUi } from './lib/store.ts';
+import { useTester } from './lib/tester-store.ts';
 import { ReplayBar } from './ReplayBar.tsx';
 import { RightDock } from './RightDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
@@ -67,6 +68,8 @@ export function App() {
             params: useParams,
             alerts: useAlerts,
             chartLines: getChartLines,
+            tester: useTester,
+            chartMarkers: getChartMarkers,
         };
     }, [client, workspace]);
 

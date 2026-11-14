@@ -101,10 +101,14 @@ describe('a single run', () => {
     });
 
     it('gives the same answer every time', async () => {
+        // Byte-identical reports, for both engines: only the timings may differ.
+        for (const strategy of [NATIVE, PINE]) {
+            const a = await run({ strategy, inputs: strategy === NATIVE ? { fast: 7 } : { 'Fast EMA': 7 } });
+            const b = await run({ strategy, inputs: strategy === NATIVE ? { fast: 7 } : { 'Fast EMA': 7 } });
+            expect(a.status).toBe(200);
+            expect(JSON.stringify(b.body.report)).toBe(JSON.stringify(a.body.report));
+        }
         const a = await run({ strategy: NATIVE, inputs: { fast: 7 } });
-        const b = await run({ strategy: NATIVE, inputs: { fast: 7 } });
-        expect(a.body.report.netProfit).toBe(b.body.report.netProfit);
-        expect(a.body.report.trades.length).toBe(b.body.report.trades.length);
         const other = await run({ strategy: NATIVE, inputs: { fast: 4 } });
         expect(other.body.report.netProfit).not.toBe(a.body.report.netProfit);
     });

@@ -427,3 +427,18 @@ describe('parameter search', () => {
         expect(windows[3].outOfSample[1]).toBe(1000);
     });
 });
+
+describe('order size', () => {
+    it('is a whole number of lots, written without floating-point noise', () => {
+        const { series } = market(1500, 9);
+        const run = runBacktest(strategyById('ema-cross')!, series, {
+            qty: { type: 'percent_of_equity', value: 10 },
+            lotSize: 0.00001,
+        });
+        expect(run.trades.length).toBeGreaterThan(10);
+        for (const t of run.trades) {
+            expect(String(t.qty).length, String(t.qty)).toBeLessThanOrEqual(8);
+            expect(Math.abs(t.qty / 0.00001 - Math.round(t.qty / 0.00001))).toBeLessThan(1e-6);
+        }
+    });
+});

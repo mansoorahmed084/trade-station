@@ -9,3 +9,6 @@ data/
 coverage/
 .vite/
 *.tsbuildinfo
+
+# screenshots written by the end-to-end suites
+tests/e2e/*.png

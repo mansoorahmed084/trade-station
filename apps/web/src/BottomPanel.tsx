@@ -3,15 +3,20 @@ import { useCallback } from 'react';
 import type { ServerClient } from './lib/client.ts';
 import { type BottomPanel as PanelId, useUi } from './lib/store.ts';
 import { ScriptEditor } from './panels/ScriptEditor.tsx';
+import { StrategyTester } from './panels/StrategyTester.tsx';
 
-const TABS: { id: PanelId; label: string }[] = [{ id: 'editor', label: 'Pine editor' }];
+const TABS: { id: PanelId; label: string }[] = [
+    { id: 'editor', label: 'Pine editor' },
+    { id: 'tester', label: 'Strategy tester' },
+];
 
-/** The dock under the chart: the script editor now; the strategy tester and trading panels join it later. */
+/** The dock under the chart: the script editor and the strategy tester; trading panels join it later. */
 export function BottomPanel({ client, workspace }: { client: ServerClient; workspace: VelaWorkspace }) {
     const panel = useUi((s) => s.bottomPanel);
     const height = useUi((s) => s.bottomHeight);
     const setHeight = useUi((s) => s.setBottomHeight);
     const toggle = useUi((s) => s.toggleBottomPanel);
+    const show = useUi((s) => s.showBottomPanel);
 
     const startResize = useCallback(
         (e: React.MouseEvent) => {
@@ -40,7 +45,8 @@ export function BottomPanel({ client, workspace }: { client: ServerClient; works
                         key={t.id}
                         type="button"
                         className={`tab ${panel === t.id ? 'tab-on' : ''}`}
-                        onClick={() => panel !== t.id && toggle(t.id)}
+                        onClick={() => show(t.id)}
+                        data-testid={`bottom-tab-${t.id}`}
                     >
                         {t.label}
                     </button>
@@ -52,6 +58,7 @@ export function BottomPanel({ client, workspace }: { client: ServerClient; works
             </div>
             <div className="bottom-body">
                 {panel === 'editor' && <ScriptEditor client={client} workspace={workspace} />}
+                {panel === 'tester' && <StrategyTester client={client} workspace={workspace} />}
             </div>
         </div>
     );

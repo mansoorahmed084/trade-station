@@ -1,4 +1,4 @@
-import type { Bar, BarSeries } from '@ts/core';
+import { type Bar, type BarSeries, decimalsOf } from '@ts/core';
 import { ATR, Cross, EMA, Highest, Lowest, RSI, Supertrend } from '@ts/indicators';
 import { BrokerEmulator, type BrokerOptions } from './broker.ts';
 import type { TradeRecord } from './report.ts';
@@ -108,6 +108,7 @@ export function runBacktest(strategy: NativeStrategy, bars: BarSeries, options: 
     const qtySpec = options.qty ?? { type: 'percent_of_equity', value: 10 };
     const pyramiding = Math.max(1, options.pyramiding ?? 1);
     const lot = options.lotSize ?? 0;
+    const lotDecimals = Math.min(12, decimalsOf(lot || 1));
     /** Brackets asked for while their entry was still waiting. */
     const armed = new Map<string, { from?: string; stop?: number; limit?: number; comment?: string }>();
 
@@ -123,7 +124,8 @@ export function runBacktest(strategy: NativeStrategy, bars: BarSeries, options: 
                 : qtySpec.type === 'cash'
                   ? qtySpec.value / perUnit
                   : (broker.equity(price) * qtySpec.value) / 100 / perUnit;
-        if (lot > 0) qty = Math.floor(qty / lot + 1e-9) * lot;
+        // Whole lots, written without the noise binary floating point adds to a product.
+        if (lot > 0) qty = Number((Math.floor(qty / lot + 1e-9) * lot).toFixed(lotDecimals));
         return qty;
     };
 

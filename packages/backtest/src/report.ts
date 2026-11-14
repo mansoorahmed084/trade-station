@@ -61,8 +61,11 @@ export interface Report {
     all: SideStats;
     long: SideStats;
     short: SideStats;
-    /** Bar-close equity, thinned to at most ~1,500 points. `drawdown` is ≤ 0. */
-    equity: { time: number[]; value: number[]; drawdown: number[] };
+    /**
+     * Bar-close equity, thinned to at most ~1,500 points. `drawdown` is ≤ 0. `buyHold` is what the
+     * same capital would be worth had it bought at the first close and held.
+     */
+    equity: { time: number[]; value: number[]; drawdown: number[]; buyHold: number[] };
     monthly: { month: string; pnl: number; returnPct: number }[];
     trades: TradeRecord[];
     bars: number;
@@ -205,12 +208,19 @@ export function buildReport(
     const stride = Math.max(1, Math.ceil(n / MAX_POINTS));
     let deepest = 0;
     for (let i = 1; i < n; i++) if (drawdown[i] < drawdown[deepest]) deepest = i;
-    const points = { time: [] as number[], value: [] as number[], drawdown: [] as number[] };
+    const points = {
+        time: [] as number[],
+        value: [] as number[],
+        drawdown: [] as number[],
+        buyHold: [] as number[],
+    };
+    const firstClose = n ? bars.close[0] : 0;
     for (let i = 0; i < n; i++) {
         if (i % stride !== 0 && i !== n - 1 && i !== deepest) continue;
         points.time.push(bars.time[i]);
         points.value.push(equity[i]);
         points.drawdown.push(drawdown[i]);
+        points.buyHold.push(firstClose > 0 ? (initialCapital * bars.close[i]) / firstClose : initialCapital);
     }
 
     return {

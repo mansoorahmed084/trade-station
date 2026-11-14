@@ -3,6 +3,8 @@ import { composeOnPlot, findPlots, ON_PLOT_STUDIES, type OnPlotStudy, readHeader
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stripChartType } from '../lib/chart-types.ts';
 import type { ServerClient } from '../lib/client.ts';
+import { useUi } from '../lib/store.ts';
+import { useTester } from '../lib/tester-store.ts';
 import { type EditorMarker, MonacoEditor } from '../MonacoEditor.tsx';
 import { Button, Field, Modal } from '../ui.tsx';
 
@@ -319,6 +321,30 @@ export function ScriptEditor({ client, workspace }: { client: ServerClient; work
                     <Button onClick={() => void check()} disabled={busy || !source.trim()}>
                         Check compatibility
                     </Button>
+                    {readHeader(source).kind === 'strategy' && (
+                        <Button
+                            onClick={() => {
+                                // A saved, unchanged script is tested by reference; anything else as it stands in the editor.
+                                if (current && !dirty) {
+                                    useTester.getState().patch({
+                                        choice: { kind: 'pine', scriptId: current.id },
+                                        result: null,
+                                        error: null,
+                                        tab: 'overview',
+                                    });
+                                } else
+                                    useTester
+                                        .getState()
+                                        .testDraft(readHeader(source).title ?? (name || 'Strategy'), source);
+                                useUi.getState().showBottomPanel('tester');
+                            }}
+                            disabled={busy || !source.trim()}
+                            title="Run this strategy over history in the strategy tester"
+                            data-testid="test-strategy"
+                        >
+                            Test strategy
+                        </Button>
+                    )}
                     <Button
                         onClick={() => setOnPlot(true)}
                         disabled={busy || !source.trim()}

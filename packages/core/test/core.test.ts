@@ -146,6 +146,37 @@ describe('BarSeries', () => {
         expect(a.time[0]).toBe(0);
         expect(a.length).toBe(5);
     });
+
+    it('splices a series into a gap, and agrees with a bar-by-bar merge', () => {
+        const at = (minutes: number[], v: number) => BarSeries.fromBars(minutes.map((m) => bar(m * MIN, v, v, v, v)));
+        const a = at([1, 2, 8, 9], 1);
+        a.merge(at([4, 5, 6], 2)); // inside a gap
+        expect(Array.from(a.time.subarray(0, a.length))).toEqual([1, 2, 4, 5, 6, 8, 9].map((m) => m * MIN));
+        expect(a.toBars().map((b) => b.close)).toEqual([1, 1, 2, 2, 2, 1, 1]);
+        a.merge(at([0], 3)); // before everything
+        expect(a.time[0]).toBe(0);
+        // Overlaps still go through the bar-by-bar path, newer data winning.
+        a.merge(at([6, 7, 8], 4));
+        expect(a.toBars().map((b) => b.close)).toEqual([3, 1, 1, 2, 2, 4, 4, 4, 1]);
+        // Many gap merges give exactly what one merge of everything gives.
+        const parts = new BarSeries(8);
+        for (const start of [500, 0, 300, 100, 900, 700])
+            parts.merge(
+                at(
+                    Array.from({ length: 100 }, (_, i) => start + i),
+                    start,
+                ),
+            );
+        const whole = new BarSeries(8);
+        for (const start of [0, 100, 300, 500, 700, 900])
+            whole.merge(
+                at(
+                    Array.from({ length: 100 }, (_, i) => start + i),
+                    start,
+                ),
+            );
+        expect(parts.toBars()).toEqual(whole.toBars());
+    });
 });
 
 describe('aggregation', () => {

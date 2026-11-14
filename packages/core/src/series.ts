@@ -180,6 +180,29 @@ export class BarSeries {
             this.length += other.length;
             return;
         }
+        // `other` falls in a gap of this series (before it, or between two of its bars): splice it in
+        // with block copies instead of walking bar by bar.
+        const at = this.lowerBound(other.time[0]);
+        if (at === this.length || this.time[at] > other.time[other.length - 1]) {
+            const spliced = new BarSeries(this.length + other.length);
+            for (const key of ['time', 'open', 'high', 'low', 'close', 'volume'] as const) {
+                const into = spliced[key];
+                into.set(this[key].subarray(0, at), 0);
+                into.set(other[key].subarray(0, other.length), at);
+                into.set(this[key].subarray(at, this.length), at + other.length);
+            }
+            spliced.length = this.length + other.length;
+            Object.assign(this, {
+                time: spliced.time,
+                open: spliced.open,
+                high: spliced.high,
+                low: spliced.low,
+                close: spliced.close,
+                volume: spliced.volume,
+                length: spliced.length,
+            });
+            return;
+        }
         const merged = new BarSeries(this.length + other.length);
         let i = 0;
         let j = 0;

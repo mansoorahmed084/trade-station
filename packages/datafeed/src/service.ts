@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import {
     aggregate,
     type Bar,
-    type BarSeries,
+    BarSeries,
     barCloseTime,
     barOpenTime,
     canAggregate,
@@ -48,6 +48,8 @@ export interface DataServiceOptions {
 }
 
 const WINDOW_BARS = 1000;
+/** Bars a deep download gathers before writing them to the store. */
+const FLUSH_BARS = 200_000;
 /** How long a forming bar fetched for one request may answer the next. The live stream takes over after that. */
 const TAIL_TTL_MS = 3_000;
 
@@ -245,19 +247,37 @@ export class MarketDataService {
         const windows: Range[] = [];
         for (let a = start; a < gap[1]; a += span) windows.push([a, Math.min(gap[1], a + span)]);
         if (windows.length > 40) this.log(`downloading ${seriesId(key)}: ${windows.length} requests`);
-        // Four at a time: a deep download must leave request slots free for whatever the user does next.
-        for (let i = 0; i < windows.length; i += 4) {
-            const batch = windows.slice(i, i + 4);
-            const results = await Promise.all(
-                batch.map(([a, b]) => adapter.getBars(key.ticker, key.timeframe, { from: a, to: b - 1 })),
-            );
-            for (let k = 0; k < batch.length; k++) {
-                const closed = results[k].filter(
-                    (bar) => bar.time >= batch[k][0] && bar.time < batch[k][1] && bar.time < boundary,
+        // Bars are gathered and written in large batches. Writing each window as it arrives rewrote
+        // the whole year's segment (up to 25 MB of one-minute bars) hundreds of times whenever the
+        // store already held newer bars, which held up the event loop for seconds on a deep load.
+        const pending = new BarSeries(Math.min(FLUSH_BARS, windows.length * WINDOW_BARS) + 16);
+        let covered: Range | null = null;
+        const flush = () => {
+            if (pending.length) this.store.write(key, pending);
+            if (covered) this.store.addCoverage(key, covered[0], covered[1]);
+            pending.clear();
+            covered = null;
+        };
+        try {
+            // Four at a time: a deep download must leave request slots free for whatever the user does next.
+            for (let i = 0; i < windows.length; i += 4) {
+                const batch = windows.slice(i, i + 4);
+                const results = await Promise.all(
+                    batch.map(([a, b]) => adapter.getBars(key.ticker, key.timeframe, { from: a, to: b - 1 })),
                 );
-                this.store.write(key, closed);
-                this.store.addCoverage(key, batch[k][0], Math.min(batch[k][1], boundary));
+                for (let k = 0; k < batch.length; k++) {
+                    const [a, b] = batch[k];
+                    const end = Math.min(b, boundary);
+                    const closed = BarSeries.fromBars(results[k].filter((bar) => bar.time >= a && bar.time < end));
+                    pending.merge(closed);
+                    // Windows arrive in order, so what has been fetched is one growing range.
+                    covered = covered ? [covered[0], Math.max(covered[1], end)] : [a, end];
+                }
+                if (pending.length >= FLUSH_BARS) flush();
             }
+        } finally {
+            // Keep whatever arrived, even when a later window failed: it will not be asked for again.
+            flush();
         }
     }
 

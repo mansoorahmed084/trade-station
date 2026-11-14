@@ -1,5 +1,6 @@
 import { ConditionEvaluator } from '@ts/alerts';
-import { type Bar, seededRandom } from '@ts/core';
+import { buildReport, intrabarLookup, runBacktest, strategyById } from '@ts/backtest';
+import { aggregate, type Bar, BarSeries, seededRandom } from '@ts/core';
 import {
     ATR,
     BollingerBands,
@@ -129,6 +130,31 @@ function thousandAlerts(): ConditionEvaluator[] {
 }
 
 /** Budgets added by later phases (backtests) register here too. */
+let millionBars: BarSeries | null = null;
+/** One million one-minute bars on a 0.01 grid, built once. */
+function million(): BarSeries {
+    if (millionBars) return millionBars;
+    const rnd = seededRandom(21);
+    const series = new BarSeries(1_000_000);
+    let p = 100;
+    const cents = (v: number) => Math.round(v * 100) / 100;
+    for (let i = 0; i < 1_000_000; i++) {
+        const o = p;
+        const c = cents(Math.max(1, o * (1 + (rnd() - 0.5) * 0.004)));
+        series.append(
+            i * MIN,
+            o,
+            cents(Math.max(o, c) * (1 + rnd() * 0.001)),
+            cents(Math.min(o, c) * (1 - rnd() * 0.001)),
+            c,
+            10,
+        );
+        p = c;
+    }
+    millionBars = series;
+    return series;
+}
+
 export const benches: BenchCase[] = [
     {
         // The plan allows 100 ms from a tick to the alert decision. This measures 100 ticks across 1,000 alerts.
@@ -177,6 +203,65 @@ export const benches: BenchCase[] = [
         run: async () => {
             await new PineTS(pineBars as any).run(
                 '//@version=6\nindicator("b")\nplot(ta.ema(close, 21))\nplot(ta.rsi(close, 14))\n[m, s, h] = ta.macd(close, 12, 26, 9)\nplot(h)\nplot(ta.atr(14))\n[u, v, w] = ta.bb(close, 20, 2.0)\nplot(v)\nplot(ta.sma(close, 200))',
+            );
+        },
+    },
+    {
+        // The plan's budget is 5 s for a million bars; the limit below is a regression guard far inside it.
+        name: 'Backtest: native EMA cross + report over 1M bars',
+        budgetMs: 400,
+        runs: 3,
+        run: () => {
+            const series = million();
+            const t0 = performance.now();
+            const run = runBacktest(strategyById('ema-cross')!, series, { broker: { tickSize: 0.01 } });
+            buildReport(run.trades, series, 10_000, MIN);
+            return performance.now() - t0;
+        },
+    },
+    {
+        name: 'Backtest: bar magnifier, 100K 10m bars read as 1M 1m bars',
+        budgetMs: 500,
+        runs: 3,
+        run: () => {
+            const fine = million();
+            const coarse = aggregate(fine, '10');
+            const t0 = performance.now();
+            runBacktest(strategyById('donchian-breakout')!, coarse, {
+                broker: { tickSize: 0.01 },
+                intrabar: intrabarLookup(fine, '10'),
+            });
+            return performance.now() - t0;
+        },
+    },
+    {
+        name: 'Backtest: 200 parameter sets × 20K bars, one thread',
+        budgetMs: 1200,
+        runs: 2,
+        run: () => {
+            const series = million().slice(0, 20_000);
+            const t0 = performance.now();
+            for (let fast = 2; fast < 22; fast++) {
+                for (let slow = 30; slow < 130; slow += 10) {
+                    const run = runBacktest(strategyById('ema-cross')!, series, {
+                        broker: { tickSize: 0.01 },
+                        inputs: { fast, slow },
+                    });
+                    buildReport(run.trades, series, 10_000, MIN);
+                }
+            }
+            return performance.now() - t0;
+        },
+    },
+    {
+        // The Pine runtime costs several microseconds a bar: a million bars takes it about 8 s,
+        // which is over the plan's 5 s budget. This guards the speed it does have.
+        name: 'Backtest: Pine EMA-cross strategy over 20K bars',
+        budgetMs: 500,
+        runs: 3,
+        run: async () => {
+            await new PineTS(pineBars as any).run(
+                '//@version=6\nstrategy("b", default_qty_type=strategy.percent_of_equity, default_qty_value=10)\nf = ta.ema(close, 9)\ns = ta.ema(close, 21)\na = ta.atr(14)\nif ta.crossover(f, s)\n    strategy.entry("L", strategy.long)\n    strategy.exit("X", "L", stop=close - 2 * a, limit=close + 3 * a)\nif ta.crossunder(f, s)\n    strategy.close("L")',
             );
         },
     },

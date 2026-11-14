@@ -6,6 +6,7 @@
     "exports": {
         ".": "./src/index.ts",
         "./report": "./src/report.ts",
-        "./api": "./src/api.ts"
+        "./api": "./src/api.ts",
+        "./tv-trades": "./src/tv-trades.ts"
     }
 }

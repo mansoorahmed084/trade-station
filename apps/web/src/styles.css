@@ -810,3 +810,421 @@ input.text:disabled {
 .panel-head {
     flex-wrap: wrap;
 }
+
+/* ── strategy tester ───────────────────────────────────────────────────── */
+.tester {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+    /* Chart roles for this dark surface. Validated as a pair for colour-blind separation and contrast. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --viz-loss: #ef5350;
+}
+.tester-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    flex-wrap: wrap;
+}
+.tester-bar select,
+.tester-bar input[type="date"] {
+    max-width: 260px;
+}
+.tester-bar .spacer {
+    flex: 1;
+}
+.tester-market {
+    font-weight: 600;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.tester-status {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.tester-error,
+.tester-note {
+    margin: 0 10px 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border-left: 3px solid var(--red);
+    background: rgba(239, 83, 80, 0.1);
+    overflow-wrap: anywhere;
+}
+.tester-note {
+    border-left-color: var(--amber);
+    background: rgba(227, 179, 65, 0.08);
+    color: var(--muted);
+}
+.tester > .tabs {
+    margin: 0;
+    padding: 0 6px;
+    flex: none;
+}
+.tester-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+    transition: opacity 0.12s;
+}
+.tester-body.is-running {
+    opacity: 0.55;
+}
+.pad {
+    padding: 12px;
+}
+.pos {
+    color: var(--green);
+}
+.neg {
+    color: var(--red);
+}
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+}
+.inline input[type="number"] {
+    width: 84px;
+}
+.row.wrap {
+    flex-wrap: wrap;
+}
+.row.end {
+    justify-content: flex-end;
+}
+.error-text {
+    color: var(--red);
+    overflow-wrap: anywhere;
+}
+.kpis {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    margin-bottom: 10px;
+}
+.kpi {
+    display: flex;
+    flex-direction: column;
+    min-width: 96px;
+}
+.kpi > span {
+    color: var(--muted);
+    font-size: 11px;
+}
+.kpi > b {
+    font-size: 18px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+}
+.kpi > small {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+.grid-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+.grid-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    white-space: nowrap;
+}
+.grid-table td {
+    padding: 4px 10px;
+    border-bottom: 1px solid rgba(35, 42, 51, 0.6);
+    white-space: nowrap;
+}
+.grid-table .num {
+    text-align: right;
+}
+.grid-table.rows-click tbody tr {
+    cursor: pointer;
+}
+.grid-table.rows-click tbody tr:hover {
+    background: rgba(76, 141, 255, 0.08);
+}
+.grid-table tr.off td {
+    color: var(--muted);
+}
+.grid-table.vary input[type="number"] {
+    width: 90px;
+}
+.table-scroll {
+    overflow: auto;
+    max-height: 100%;
+}
+.performance {
+    display: grid;
+    grid-template-columns: minmax(380px, 1.3fr) minmax(300px, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+.months h4,
+.tester-settings h4 {
+    margin: 14px 0 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+}
+.month-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    gap: 4px;
+}
+.month {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+}
+.month span {
+    color: var(--muted);
+    font-size: 10px;
+}
+.trades {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+.trades-tools {
+    margin-bottom: 6px;
+    flex: none;
+}
+.trades .table-scroll {
+    flex: 1;
+    min-height: 0;
+}
+.comparison {
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    line-height: 1.5;
+}
+.comparison ul {
+    margin: 4px 0;
+    padding-left: 18px;
+    color: var(--muted);
+}
+.optimizer {
+    display: grid;
+    grid-template-columns: minmax(420px, 520px) 1fr;
+    gap: 20px;
+    align-items: start;
+}
+.optimizer-setup {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.optimizer-results {
+    min-width: 0;
+}
+.seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+    align-self: flex-start;
+}
+.seg button {
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    padding: 4px 12px;
+    font: inherit;
+    cursor: pointer;
+}
+.seg button.on {
+    background: rgba(76, 141, 255, 0.16);
+    color: var(--text);
+}
+.progress-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+}
+.progress {
+    flex: 0 0 220px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    overflow: hidden;
+}
+.progress i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.15s;
+}
+.walkforward {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.montecarlo {
+    max-width: 860px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+}
+.tester-settings section {
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+}
+.tester-settings h4 {
+    margin-top: 0;
+}
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+    width: 100%;
+}
+.grid-2 .field input,
+.grid-2 .field select {
+    min-width: 0;
+}
+
+/* charts inside the tester */
+.viz {
+    position: relative;
+    width: 100%;
+    user-select: none;
+}
+.viz svg {
+    display: block;
+    touch-action: none;
+}
+.viz-empty {
+    padding: 24px;
+}
+.viz-legend {
+    position: absolute;
+    left: 56px;
+    top: 2px;
+    display: flex;
+    gap: 14px;
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events: none;
+}
+.viz-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.viz-key i {
+    width: 12px;
+    height: 2px;
+    border-radius: 1px;
+}
+.viz-grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+.viz-tick {
+    fill: var(--muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+.viz-end {
+    fill: var(--text);
+    font-size: 11px;
+}
+.viz-cross {
+    stroke: var(--muted);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    shape-rendering: crispEdges;
+}
+.viz-dot {
+    stroke: var(--panel);
+    stroke-width: 2;
+}
+.viz-dd-fill {
+    fill: var(--viz-loss);
+    fill-opacity: 0.22;
+}
+.viz-dd-line {
+    fill: none;
+    stroke: var(--viz-loss);
+    stroke-width: 1.5;
+}
+.viz-tip {
+    position: absolute;
+    width: 184px;
+    pointer-events: none;
+    background: #1b222b;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    z-index: 3;
+}
+.viz-tip-head {
+    color: var(--muted);
+    margin-bottom: 3px;
+}
+.viz-tip-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.viz-tip-row i {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    flex: none;
+}
+.viz-tip-row i.viz-tip-dd {
+    background: var(--viz-loss);
+}
+.viz-tip-row b {
+    color: var(--text);
+    font-weight: 600;
+}
+.viz-tip-row span {
+    color: var(--muted);
+    margin-left: auto;
+}

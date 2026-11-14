@@ -2,7 +2,7 @@ import type { AlertInput } from '@ts/alerts/types';
 import { create } from 'zustand';
 
 export type RightPanel = 'watchlist' | 'alerts';
-export type BottomPanel = 'editor';
+export type BottomPanel = 'editor' | 'tester';
 export type DialogId = 'layouts' | 'formula' | 'chartType' | 'alert';
 
 /** What the alert dialog opens with: an existing alert to edit, or values to start a new one from. */
@@ -21,6 +21,7 @@ interface UiState {
     toggleRightPanel(panel: RightPanel): void;
     showRightPanel(panel: RightPanel | null): void;
     toggleBottomPanel(panel: BottomPanel): void;
+    showBottomPanel(panel: BottomPanel): void;
     setBottomHeight(height: number): void;
     setReplayOpen(open: boolean): void;
     setDialog(dialog: DialogId | null): void;
@@ -62,6 +63,10 @@ export const useUi = create<UiState>((set, get) => ({
     },
     toggleBottomPanel(panel) {
         set({ bottomPanel: get().bottomPanel === panel ? null : panel });
+        persist(get());
+    },
+    showBottomPanel(panel) {
+        set({ bottomPanel: panel });
         persist(get());
     },
     setBottomHeight(height) {

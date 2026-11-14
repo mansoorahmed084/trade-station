@@ -231,6 +231,40 @@ describe('MarketDataService on the synthetic venue', () => {
     });
 });
 
+describe('deep downloads', () => {
+    it('fill older history around stored bars in a few large writes, storing exactly what a fresh load does', async () => {
+        vi.useFakeTimers();
+        const now = GENESIS + 400_000 * MIN + 30_000;
+        vi.setSystemTime(now);
+        const store = new BarStore(join(dir, 'a'));
+        const service = new MarketDataService({ adapters: [new SyntheticAdapter({ genesis: GENESIS })], store });
+        await service.init();
+        // A chart already stored the recent end; a deep backtest then asks for far more.
+        await service.getBars('SYNTH:ALPHA', '1', { limit: 5000 });
+        const writes = vi.spyOn(store, 'write');
+        const deep = await service.getBars('SYNTH:ALPHA', '1', { limit: 350_000 });
+        expect(deep.length).toBe(350_000);
+        // 345 windows of 1,000 bars were fetched; they reach the disk in two writes, not 345.
+        expect(writes.mock.calls.length).toBeLessThanOrEqual(3);
+        service.close();
+
+        const freshStore = new BarStore(join(dir, 'b'));
+        const fresh = new MarketDataService({
+            adapters: [new SyntheticAdapter({ genesis: GENESIS })],
+            store: freshStore,
+        });
+        await fresh.init();
+        const reference = await fresh.getBars('SYNTH:ALPHA', '1', { limit: 350_000 });
+        fresh.close();
+        expect(deep.toBars()).toEqual(reference.toBars());
+        // And what is on disk reads back the same, gap-free.
+        const key = { provider: 'SYNTH', ticker: 'ALPHA', timeframe: '1' };
+        const stored = new BarStore(join(dir, 'a')).read(key, deep.time[0], deep.time[deep.length - 2] + 1);
+        expect(stored.length).toBe(deep.length - 1); // the last one is still forming and never stored
+        expect(new BarStore(join(dir, 'a')).missing(key, deep.time[0], deep.time[deep.length - 1])).toEqual([]);
+    });
+});
+
 describe('gap repair after an upstream reconnect', () => {
     it('replays missed bars in order', async () => {
         vi.useFakeTimers();
