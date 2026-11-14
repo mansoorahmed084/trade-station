@@ -11,6 +11,8 @@ import { Gateway, isLocalOrigin } from './gateway.ts';
 import { createAlerts, registerAlertRoutes } from './routes/alerts.ts';
 import { registerBacktestRoutes } from './routes/backtest.ts';
 import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
+import { registerTradingRoutes } from './routes/trading.ts';
+import { TradingService } from './trading/service.ts';
 
 export interface App {
     server: FastifyInstance;
@@ -21,6 +23,7 @@ export interface App {
     scriptHost: ScriptHost;
     alerts: AlertEngine;
     backtest: BacktestService;
+    trading: TradingService;
     config: Config;
     listen(): Promise<string>;
     close(): Promise<void>;
@@ -235,6 +238,10 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
     registerBacktestRoutes(server, backtest);
     backtest_stats = () => backtest.stats();
 
+    const trading = new TradingService({ data, db, publish: (event) => gateway.publish('trading', event), log });
+    registerTradingRoutes(server, trading);
+    await trading.start();
+
     const alerts = createAlerts({ db, data, scriptHost, scripts, gateway, notifier: config.notifier, log });
     registerAlertRoutes(server, { ...alerts, data, gateway, notifier: config.notifier });
     // Alerts start watching before the server accepts connections, so none is missed.
@@ -249,6 +256,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         scriptHost,
         alerts: alerts.engine,
         backtest,
+        trading,
         config,
         async listen() {
             return server.listen({ host: config.host, port: config.port });
@@ -256,6 +264,7 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         async close() {
             alerts.engine.stop();
             backtest.close();
+            trading.close();
             gateway.close();
             data.close();
             await server.close();
