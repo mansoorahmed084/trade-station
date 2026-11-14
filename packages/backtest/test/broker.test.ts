@@ -278,3 +278,27 @@ describe('live ticks (paper trading)', () => {
         expect(seen).toEqual(['a@10']);
     });
 });
+
+describe('tick grid', () => {
+    it('moves order prices onto the grid away from the market, as TradingView does', () => {
+        const b = new BrokerEmulator({ tickSize: 0.01 });
+        const price = (o: { limit?: number; stop?: number }) => o.limit ?? o.stop;
+        // below the market: a buy limit and a sell stop round down
+        expect(price(b.submit({ id: 'a', side: 'buy', qty: 1, type: 'limit', limit: 97.123 }))).toBe(97.12);
+        expect(price(b.submit({ id: 'b', side: 'sell', qty: 1, type: 'stop', stop: 97.127 }))).toBe(97.12);
+        // above it: a sell limit and a buy stop round up
+        expect(price(b.submit({ id: 'c', side: 'sell', qty: 1, type: 'limit', limit: 103.123 }))).toBe(103.13);
+        expect(price(b.submit({ id: 'd', side: 'buy', qty: 1, type: 'stop', stop: 103.121 }))).toBe(103.13);
+        // a price already on a tick is left alone, whatever floating point says about it
+        expect(price(b.submit({ id: 'e', side: 'buy', qty: 1, type: 'stop', stop: 0.1 + 0.2 }))).toBe(0.3);
+        expect(price(b.submit({ id: 'f', side: 'sell', qty: 1, type: 'limit', limit: 57.46 }))).toBe(57.46);
+    });
+
+    it('rounds to whatever the tick is, and not at all when there is none', () => {
+        const quarter = new BrokerEmulator({ tickSize: 0.25 });
+        expect(quarter.submit({ id: 'a', side: 'buy', qty: 1, type: 'limit', limit: 4501.6 }).limit).toBe(4501.5);
+        expect(quarter.submit({ id: 'b', side: 'buy', qty: 1, type: 'stop', stop: 4501.6 }).stop).toBe(4501.75);
+        const none = new BrokerEmulator({ tickSize: 0 });
+        expect(none.submit({ id: 'a', side: 'buy', qty: 1, type: 'limit', limit: 97.123456 }).limit).toBe(97.123456);
+    });
+});

@@ -168,6 +168,30 @@ export class MarketDataService {
         return split ? split.base : this.resolve(symbol).info;
     }
 
+    /** Open time of the oldest bar a venue has for a symbol, on the given timeframe's grid. 0 when unknown. */
+    async firstBarTime(symbol: string, timeframe: string): Promise<number> {
+        const tf = normalizeTimeframe(timeframe);
+        let info: SymbolInfo;
+        try {
+            info = this.underlying(symbol);
+        } catch {
+            return 0; // a formula has no single venue
+        }
+        const { adapter } = this.resolve(info.symbol);
+        const key: SeriesKey = {
+            provider: adapter.name,
+            ticker: info.ticker,
+            timeframe: this.baseTimeframe(adapter, tf),
+        };
+        const id = seriesId(key);
+        let genesis = this.genesis.get(id);
+        if (genesis === undefined) {
+            genesis = barOpenTime(await adapter.firstBarTime(key.ticker, key.timeframe), key.timeframe);
+            this.genesis.set(id, genesis);
+        }
+        return barOpenTime(genesis, tf);
+    }
+
     /** The service's clock (injectable for tests). */
     clock(): number {
         return this.now();

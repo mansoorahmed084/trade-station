@@ -161,26 +161,25 @@ export function buildReport(
         if (peak > 0) maxDrawdownPct = Math.min(maxDrawdownPct, (drawdown[i] / peak) * 100);
     }
 
-    // Daily returns for the risk ratios; month-end equity for the monthly table.
+    // Daily returns for the risk ratios; month-end equity for the monthly table. A calendar month is
+    // only worked out when the day changes, which keeps this cheap on a million intraday bars.
     const daily: number[] = [];
     const monthly: Report['monthly'] = [];
     let dayStart = initialCapital;
     let monthStart = initialCapital;
+    const monthOf = (time: number) => {
+        const d = new Date(time);
+        return d.getUTCFullYear() * 12 + d.getUTCMonth();
+    };
     for (let i = 0; i < n; i++) {
         const last = i === n - 1;
-        const day = Math.floor(bars.time[i] / DAY);
-        if (last || Math.floor(bars.time[i + 1] / DAY) !== day) {
-            if (dayStart > 0) daily.push(equity[i] / dayStart - 1);
-            dayStart = equity[i];
-        }
-        const d = new Date(bars.time[i]);
-        const month = d.getUTCFullYear() * 12 + d.getUTCMonth();
-        const nextMonth = last
-            ? -1
-            : new Date(bars.time[i + 1]).getUTCFullYear() * 12 + new Date(bars.time[i + 1]).getUTCMonth();
-        if (last || nextMonth !== month) {
+        if (!last && Math.floor(bars.time[i + 1] / DAY) === Math.floor(bars.time[i] / DAY)) continue;
+        if (dayStart > 0) daily.push(equity[i] / dayStart - 1);
+        dayStart = equity[i];
+        const month = monthOf(bars.time[i]);
+        if (last || monthOf(bars.time[i + 1]) !== month) {
             monthly.push({
-                month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
+                month: `${Math.floor(month / 12)}-${String((month % 12) + 1).padStart(2, '0')}`,
                 pnl: equity[i] - monthStart,
                 returnPct: monthStart > 0 ? (equity[i] / monthStart - 1) * 100 : 0,
             });
@@ -242,6 +241,27 @@ export function buildReport(
         bars: n,
         from,
         to,
+    };
+}
+
+/** The handful of numbers a parameter search ranks by. */
+export function summarize(report: Report): {
+    netProfit: number;
+    netProfitPct: number;
+    maxDrawdownPct: number;
+    profitFactor: number | null;
+    sharpe: number | null;
+    winRatePct: number;
+    trades: number;
+} {
+    return {
+        netProfit: report.netProfit,
+        netProfitPct: report.netProfitPct,
+        maxDrawdownPct: report.maxDrawdownPct,
+        profitFactor: report.all.profitFactor,
+        sharpe: report.sharpe,
+        winRatePct: report.all.winRatePct,
+        trades: report.all.trades,
     };
 }
 

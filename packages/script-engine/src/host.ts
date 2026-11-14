@@ -15,7 +15,16 @@ export interface RunOptions {
     alertMode?: 'all' | 'realtime';
     /** Drop the still-forming bar so every value is final. Default false. */
     closedOnly?: boolean;
+    /**
+     * Overrides for the script's `strategy()` declaration, by Pine name (`initial_capital`,
+     * `commission_type`, `commission_value`, `slippage`, `default_qty_type`, `default_qty_value`,
+     * `pyramiding`, `process_orders_on_close`). Anything left out keeps the script's own value.
+     */
+    props?: Record<string, unknown>;
 }
+
+/** The part of the market-data service a script run needs. A worker thread supplies its own. */
+export type ScriptData = Pick<MarketDataService, 'getBars' | 'describe' | 'clock'>;
 
 export interface ScriptInput {
     title: string;
@@ -65,6 +74,8 @@ export interface StrategyResult {
     losses: number;
     even: number;
     positionSize: number;
+    /** The `strategy()` declaration as it ran, after any overrides. */
+    properties: Record<string, unknown>;
     trades: ScriptTrade[];
 }
 
@@ -126,9 +137,9 @@ export function locateError(err: unknown): ScriptError {
  * whether a pasted script will run.
  */
 export class ScriptHost {
-    private data: MarketDataService;
+    private data: ScriptData;
 
-    constructor(data: MarketDataService) {
+    constructor(data: ScriptData) {
         this.data = data;
     }
 
@@ -193,9 +204,13 @@ export class ScriptHost {
         const limit = opts.from === undefined ? (opts.bars ?? 1000) : undefined;
         const pine = new PineTS(this.provider() as any, symbol, tf, limit, opts.from, to);
         pine.setAlertMode(opts.alertMode ?? 'all');
-        const indicator = new Indicator(source, opts.inputs ?? {});
         let ctx: any;
+        let indicator: Indicator;
         try {
+            indicator = new Indicator(source, opts.inputs ?? {});
+            for (const [name, value] of Object.entries(opts.props ?? {})) {
+                if (value !== undefined) (indicator.prop as Record<string, unknown>)[name] = value;
+            }
             ctx = await pine.run(indicator);
         } catch (err) {
             throw Object.assign(new Error(locateError(err).message), locateError(err));
@@ -218,17 +233,7 @@ export class ScriptHost {
 
         let inputs: ScriptInput[] = [];
         try {
-            inputs = indicator.getInputsMeta().map((i: any) => ({
-                title: i.title ?? i.name ?? i.id,
-                type: i.type,
-                defval: i.defval,
-                options: i.options,
-                min: i.minval,
-                max: i.maxval,
-                step: i.step,
-                group: i.group,
-                tooltip: i.tooltip,
-            }));
+            inputs = indicator.getInputsMeta().map(inputMeta);
         } catch {}
 
         const header = readHeader(source);
@@ -321,6 +326,59 @@ export class ScriptHost {
     }
 }
 
+function inputMeta(i: any): ScriptInput {
+    return {
+        title: i.title ?? i.name ?? i.id,
+        type: i.type,
+        defval: i.defval,
+        options: i.options,
+        min: i.minval,
+        max: i.maxval,
+        step: i.step,
+        group: i.group,
+        tooltip: i.tooltip,
+    };
+}
+
+/** A handful of flat bars: enough to make the runtime compile a script, with nothing to compute. */
+const SAMPLE = Array.from({ length: 3 }, (_, i) => ({
+    openTime: 1_700_000_000_000 + i * 3_600_000,
+    closeTime: 1_700_000_000_000 + (i + 1) * 3_600_000 - 1,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+    volume: 1,
+}));
+
+/**
+ * A script's declaration and inputs, without running it on real data. Throws a `ScriptError` when
+ * the script does not compile.
+ */
+export async function describeScript(source: string): Promise<{
+    title: string;
+    kind: 'indicator' | 'strategy' | 'library' | null;
+    inputs: ScriptInput[];
+}> {
+    const header = readHeader(source);
+    let indicator: Indicator;
+    try {
+        indicator = new Indicator(source, {});
+        await new PineTS(SAMPLE as any).run(indicator);
+    } catch (err) {
+        const located = locateError(err);
+        // Three bars with no symbol behind them can trip a script that would run fine on a chart:
+        // only a failure to compile is reported here.
+        if (located.stage === 'compile') throw Object.assign(new Error(located.message), located);
+        indicator = new Indicator(source, {});
+    }
+    return {
+        title: header.title ?? 'Script',
+        kind: indicator.getDeclarationType() ?? header.kind,
+        inputs: indicator.getInputsMeta().map(inputMeta),
+    };
+}
+
 function summarize(s: any): StrategyResult {
     const trade = (t: any, open: boolean): ScriptTrade => ({
         entryId: String(t.entry_id ?? t.id ?? ''),
@@ -349,6 +407,7 @@ function summarize(s: any): StrategyResult {
         losses: s.losstrades,
         even: s.eventrades,
         positionSize: s.position_size,
+        properties: { ...(s.config ?? {}) },
         trades: [
             ...(s.closedtrades ?? []).map((t: any) => trade(t, false)),
             ...(s.opentrades ?? []).map((t: any) => trade(t, true)),

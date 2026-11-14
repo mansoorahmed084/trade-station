@@ -60,7 +60,27 @@ describe('parity with the Pine runtime’s broker', () => {
     ] as const) {
         it(`EMA cross with ATR stop and target, ${name}: every trade matches`, async () => {
             const { series, klines } = market(4000, seed);
-            const ctx: any = await new PineTS(klines).run(PINE_EMA_CROSS(short));
+            // Through a provider, as the server runs it, so the script sees the symbol's real tick size.
+            const provider = {
+                getMarketData: async () => klines,
+                getSymbolInfo: async () => ({
+                    ticker: 'TEST',
+                    tickerid: 'T:TEST',
+                    mintick: 0.01,
+                    pricescale: 100,
+                    minmove: 1,
+                    pointvalue: 1,
+                    mincontract: 1e-6,
+                    timezone: 'Etc/UTC',
+                    session: '24x7',
+                    type: 'crypto',
+                    currency: 'USD',
+                }),
+                configure() {},
+            };
+            const ctx: any = await new PineTS(provider as any, 'T:TEST', '60', klines.length).run(
+                PINE_EMA_CROSS(short),
+            );
             const pine = ctx.strategy.closedtrades as any[];
             const native = runBacktest(strategyById('ema-cross')!, series, {
                 broker: { commission: { type: 'percent', value: 0.1 }, tickSize: 0.01 },
@@ -85,13 +105,13 @@ describe('parity with the Pine runtime’s broker', () => {
                 expect(b.entryTime, where).toBe(a.entry_time);
                 expect(b.exitTime, where).toBe(a.exit_time);
                 expect(b.entryPrice, where).toBeCloseTo(a.entry_price, 9);
-                // the Pine broker snaps stop and target prices to the tick grid
-                expect(Math.abs(b.exitPrice! - a.exit_price), where).toBeLessThanOrEqual(0.005 + 1e-9);
+                // both brokers move a stop or target onto the tick grid, in the same direction
+                expect(b.exitPrice, where).toBeCloseTo(a.exit_price, 9);
                 expect(b.side, where).toBe(a.size > 0 ? 'long' : 'short');
                 expect(Math.abs(b.qty - Math.abs(a.size)) / Math.abs(a.size), where).toBeLessThan(2e-4);
             }
             const net = mine.reduce((sum, t) => sum + t.pnl, 0);
-            expect(Math.abs(net - ctx.strategy.netprofit) / Math.abs(ctx.strategy.netprofit)).toBeLessThan(5e-3);
+            expect(Math.abs(net - ctx.strategy.netprofit) / Math.abs(ctx.strategy.netprofit)).toBeLessThan(1e-3);
         });
     }
 });
@@ -209,7 +229,7 @@ describe('native strategy runner', () => {
 describe('report', () => {
     const bars = new BarSeries();
     const closes = [100, 102, 104, 103, 101, 105, 110, 108];
-    closes.forEach((c, i) => bars.append(T0 + i * 86_400_000, c, c + 1, c - 1, c, 1));
+    for (const [i, c] of closes.entries()) bars.append(T0 + i * 86_400_000, c, c + 1, c - 1, c, 1);
     const day = (i: number) => T0 + i * 86_400_000;
     const trades: TradeRecord[] = [
         {

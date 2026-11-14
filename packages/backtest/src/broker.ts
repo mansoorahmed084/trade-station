@@ -1,4 +1,4 @@
-import type { Bar } from '@ts/core';
+import { type Bar, decimalsOf } from '@ts/core';
 
 /**
  * A simulated broker. The same engine fills orders in a backtest (bar by bar) and in paper trading
@@ -122,8 +122,11 @@ export class BrokerEmulator {
     private clock = 0;
     onFill?: (fill: Fill, order: Order) => void;
 
+    private tickDecimals: number;
+
     constructor(options: Partial<BrokerOptions> = {}) {
         this.options = { ...DEFAULT_BROKER, ...options };
+        this.tickDecimals = Math.min(12, decimalsOf(this.options.tickSize));
     }
 
     // ── State ───────────────────────────────────────────────────────────────
@@ -193,6 +196,11 @@ export class BrokerEmulator {
             return reject('a limit price is required');
         if ((order.type === 'stop' || order.type === 'stop_limit') && !(order.stop! > 0))
             return reject('a stop price is required');
+        // Order prices sit on the tick grid, moved away from the market as TradingView does: a buy
+        // limit and a sell stop round down, a sell limit and a buy stop round up.
+        const buy = order.side === 'buy';
+        if (order.limit !== undefined) order.limit = this.snap(order.limit, !buy);
+        if (order.stop !== undefined) order.stop = this.snap(order.stop, buy);
         const previous = this.orders.get(order.id);
         if (previous?.status === 'pending') {
             previous.status = 'cancelled';
@@ -201,6 +209,16 @@ export class BrokerEmulator {
         this.orders.set(order.id, order);
         this.active.push(order);
         return order;
+    }
+
+    /** A price moved onto the tick grid, up or down. One already on a tick (within rounding noise) stays. */
+    private snap(price: number, up: boolean): number {
+        const tick = this.options.tickSize;
+        if (!(tick > 0) || !Number.isFinite(price)) return price;
+        const ticks = price / tick;
+        const nearest = Math.round(ticks);
+        const n = Math.abs(ticks - nearest) < 1e-6 ? nearest : up ? Math.ceil(ticks) : Math.floor(ticks);
+        return Number((n * tick).toFixed(this.tickDecimals));
     }
 
     cancel(id: string): boolean {

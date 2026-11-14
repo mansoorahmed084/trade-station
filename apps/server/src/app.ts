@@ -4,10 +4,12 @@ import type { AlertEngine } from '@ts/alerts';
 import { BarStore, BinanceAdapter, type MarketDataAdapter, MarketDataService, SyntheticAdapter } from '@ts/datafeed';
 import { ScriptHost } from '@ts/script-engine';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { BacktestService } from './backtest/service.ts';
 import type { Config } from './config.ts';
 import { Db } from './db.ts';
 import { Gateway, isLocalOrigin } from './gateway.ts';
 import { createAlerts, registerAlertRoutes } from './routes/alerts.ts';
+import { registerBacktestRoutes } from './routes/backtest.ts';
 import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
 
 export interface App {
@@ -18,6 +20,7 @@ export interface App {
     scripts: ScriptStore;
     scriptHost: ScriptHost;
     alerts: AlertEngine;
+    backtest: BacktestService;
     config: Config;
     listen(): Promise<string>;
     close(): Promise<void>;
@@ -28,6 +31,8 @@ export interface AppOverrides {
     dbPath?: string;
     log?: (message: string) => void;
     lingerMs?: number;
+    /** Backtest worker threads. */
+    workers?: number;
 }
 
 const MIME: Record<string, string> = {
@@ -94,11 +99,15 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         reply.code(status).send({ error: message });
     });
 
+    // The tester is created further down, once the data service is up.
+    let backtest_stats = (): unknown => null;
+
     server.get('/api/health', async () => ({
         ok: true,
         now: Date.now(),
         connections: gateway.connections,
         ...data.stats(),
+        backtest: backtest_stats(),
     }));
 
     server.get('/api/providers', async () => {
@@ -216,6 +225,16 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         },
     });
 
+    const backtest = new BacktestService({
+        data,
+        scriptSource: (id) => scripts.get(id)?.source,
+        publish: (event) => gateway.publish('backtest', event),
+        log,
+        workers: overrides.workers,
+    });
+    registerBacktestRoutes(server, backtest);
+    backtest_stats = () => backtest.stats();
+
     const alerts = createAlerts({ db, data, scriptHost, scripts, gateway, notifier: config.notifier, log });
     registerAlertRoutes(server, { ...alerts, data, gateway, notifier: config.notifier });
     // Alerts start watching before the server accepts connections, so none is missed.
@@ -229,12 +248,14 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         scripts,
         scriptHost,
         alerts: alerts.engine,
+        backtest,
         config,
         async listen() {
             return server.listen({ host: config.host, port: config.port });
         },
         async close() {
             alerts.engine.stop();
+            backtest.close();
             gateway.close();
             data.close();
             await server.close();
