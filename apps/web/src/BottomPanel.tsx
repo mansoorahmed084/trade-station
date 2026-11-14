@@ -4,13 +4,15 @@ import type { ServerClient } from './lib/client.ts';
 import { type BottomPanel as PanelId, useUi } from './lib/store.ts';
 import { ScriptEditor } from './panels/ScriptEditor.tsx';
 import { StrategyTester } from './panels/StrategyTester.tsx';
+import { AccountManager } from './panels/trading/AccountManager.tsx';
 
 const TABS: { id: PanelId; label: string }[] = [
     { id: 'editor', label: 'Pine editor' },
     { id: 'tester', label: 'Strategy tester' },
+    { id: 'trading', label: 'Account' },
 ];
 
-/** The dock under the chart: the script editor and the strategy tester; trading panels join it later. */
+/** The dock under the chart: the script editor, the strategy tester and the account manager. */
 export function BottomPanel({ client, workspace }: { client: ServerClient; workspace: VelaWorkspace }) {
     const panel = useUi((s) => s.bottomPanel);
     const height = useUi((s) => s.bottomHeight);
@@ -59,6 +61,7 @@ export function BottomPanel({ client, workspace }: { client: ServerClient; works
             <div className="bottom-body">
                 {panel === 'editor' && <ScriptEditor client={client} workspace={workspace} />}
                 {panel === 'tester' && <StrategyTester client={client} workspace={workspace} />}
+                {panel === 'trading' && <AccountManager workspace={workspace} />}
             </div>
         </div>
     );

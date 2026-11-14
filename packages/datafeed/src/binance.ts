@@ -1,6 +1,6 @@
 import { type Bar, Emitter, normalizeTimeframe, type SymbolInfo, sleep, type Tick, type Unsubscribe } from '@ts/core';
 import { Agent, fetch as pooledFetch } from 'undici';
-import type { BarQuery, MarketDataAdapter } from './types.ts';
+import type { BarQuery, Depth, MarketDataAdapter } from './types.ts';
 
 const INTERVALS: Record<string, string> = {
     '1S': '1s',
@@ -76,6 +76,15 @@ export class BinanceAdapter implements MarketDataAdapter {
                 pooledFetch(input, { ...init, dispatcher: agent })) as unknown as typeof fetch;
         }
         this.WS = opts.WebSocket ?? WebSocket;
+    }
+
+    /** The public order book (no account needed). */
+    async getDepth(ticker: string, levels: number): Promise<Depth> {
+        const limit = [5, 10, 20, 50, 100, 500, 1000].find((n) => n >= levels) ?? 1000;
+        const book = await this.rest('/api/v3/depth', { symbol: ticker, limit });
+        const side = (rows: [string, string][]) =>
+            rows.slice(0, levels).map(([p, q]) => [Number(p), Number(q)] as [number, number]);
+        return { bids: side(book.bids ?? []), asks: side(book.asks ?? []), time: Date.now() };
     }
 
     // ── REST ────────────────────────────────────────────────────────────────

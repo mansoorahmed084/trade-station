@@ -1,8 +1,9 @@
 import { registerIcon, registerWidgetAction, registerWidgetAttachment } from '@luxalgo/vela/plugin';
 import { registerChartLines } from './chart-lines.ts';
-import { isDerived, registerChartTypes } from './chart-types.ts';
+import { isDerived, registerChartTypes, stripChartType } from './chart-types.ts';
 import { exportActiveChart } from './export.ts';
 import { useUi } from './store.ts';
+import { lastPrice, placeOrder, useTrading } from './trading-store.ts';
 
 const icon = (paths: string) =>
     `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
@@ -58,6 +59,54 @@ export function setupVela(): void {
                 },
             });
         },
+    });
+
+    // Trade at the price under the pointer: a buy below the market waits as a limit, above it as a stop.
+    const tradeHere = (side: 'buy' | 'sell') => async (ctx: any) => {
+        const price = Number(ctx.pointer.price);
+        const symbol = stripChartType(String(ctx.symbol ?? ''));
+        const qty = Number(useTrading.getState().ticket.qty);
+        if (!symbol || !(qty > 0)) return;
+        const last = await lastPrice(symbol);
+        if (last === undefined) return;
+        const digits = price >= 1000 ? 2 : price >= 1 ? 4 : 8;
+        const at = Number(price.toFixed(digits));
+        const type = side === 'buy' ? (at <= last ? 'limit' : 'stop') : at >= last ? 'limit' : 'stop';
+        await placeOrder(
+            {
+                symbol,
+                side,
+                type,
+                qty,
+                limit: type === 'limit' ? at : undefined,
+                stop: type === 'stop' ? at : undefined,
+                source: 'chart',
+            },
+            true,
+        ).catch(() => {});
+    };
+    for (const side of ['buy', 'sell'] as const) {
+        registerWidgetAction({
+            id: `ts.trade.${side}`,
+            target: 'context:body',
+            label:
+                side === 'buy'
+                    ? 'Buy here (limit below the market, stop above)'
+                    : 'Sell here (limit above the market, stop below)',
+            order: side === 'buy' ? 30 : 31,
+            when: (ctx: any) => ctx.pointer?.paneKind === 'price' && Number.isFinite(ctx.pointer?.price),
+            run: tradeHere(side),
+        });
+    }
+    registerIcon('ts-trade', icon('<path d="M3 11l3-3 2.5 2.5L13 6"/><path d="M10 6h3v3"/>'));
+    registerWidgetAction({
+        id: 'ts.trade',
+        target: 'topbar',
+        label: 'Order ticket',
+        icon: 'ts-trade',
+        iconOnly: true,
+        order: 36,
+        run: () => useUi.getState().toggleRightPanel('trade'),
     });
 
     registerIcon(

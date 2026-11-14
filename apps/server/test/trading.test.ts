@@ -240,6 +240,19 @@ describe('paper trading over the API', () => {
         expect(events.some((e) => e.type === 'position' && e.position.symbol === 'SYNTH:ALPHA')).toBe(true);
     }, 30_000);
 
+    it('serves the order book behind a symbol', async () => {
+        const { status, body } = await call('GET', '/api/depth?symbol=SYNTH:ALPHA.RENKOXATR14&levels=10');
+        expect(status).toBe(200);
+        expect(body.bids).toHaveLength(10);
+        expect(body.asks).toHaveLength(10);
+        const bids = body.bids.map((r: number[]) => r[0]);
+        const asks = body.asks.map((r: number[]) => r[0]);
+        expect(bids).toEqual([...bids].sort((a: number, b: number) => b - a));
+        expect(asks).toEqual([...asks].sort((a: number, b: number) => a - b));
+        expect(bids[0]).toBeLessThan(asks[0]);
+        expect((await call('GET', '/api/depth?symbol=SYNTH:NOPE')).status).toBe(404);
+    });
+
     it('starts the paper account over', async () => {
         events.length = 0;
         const { body } = await call('POST', '/api/trading/paper/reset', {

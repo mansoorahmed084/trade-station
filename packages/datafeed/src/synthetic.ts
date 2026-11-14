@@ -1,5 +1,5 @@
 import { type Bar, barOpenTime, type SymbolInfo, seededRandom, type Tick, type Unsubscribe } from '@ts/core';
-import type { BarQuery, MarketDataAdapter } from './types.ts';
+import type { BarQuery, Depth, MarketDataAdapter } from './types.ts';
 
 const MIN = 60_000;
 
@@ -194,6 +194,28 @@ export class SyntheticAdapter implements MarketDataAdapter {
             clearInterval(timer);
             this.timers.delete(timer);
         };
+    }
+
+    /**
+     * A made-up book around the current price: sizes grow away from the touch and change every
+     * couple of seconds, so a depth ladder has something plausible to show.
+     */
+    async getDepth(ticker: string, levels: number): Promise<Depth> {
+        const now = this.now();
+        const snap = this.snapshot(ticker, now);
+        if (!snap) return { bids: [], asks: [], time: now };
+        const tick = this.state(ticker).spec.tickSize;
+        const ticks = Math.round(snap.close / tick);
+        const rnd = seededRandom((ticks * 7919 + Math.floor(now / 2000) * 104_729) >>> 0);
+        const fix = (n: number) => Number((n * tick).toFixed(8));
+        const size = (k: number) => Number((0.2 + rnd() * 3 + k * 0.15).toFixed(3));
+        const bids: [number, number][] = [];
+        const asks: [number, number][] = [];
+        for (let k = 0; k < levels; k++) {
+            bids.push([fix(ticks - 1 - k), size(k)]);
+            asks.push([fix(ticks + 1 + k), size(k)]);
+        }
+        return { bids, asks, time: now };
     }
 
     subscribeTrades(ticker: string, onTick: (tick: Tick) => void): Unsubscribe {

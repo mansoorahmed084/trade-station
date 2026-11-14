@@ -17,7 +17,7 @@ import {
     type Unsubscribe,
 } from '@ts/core';
 import type { BarStore, Range } from './store.ts';
-import { type BarQuery, type MarketDataAdapter, type SeriesKey, seriesId } from './types.ts';
+import { type BarQuery, type Depth, type MarketDataAdapter, type SeriesKey, seriesId } from './types.ts';
 import { VirtualSeriesManager } from './virtual.ts';
 
 export type BarListener = (bar: Bar, opened: boolean) => void;
@@ -48,6 +48,8 @@ export interface DataServiceOptions {
 }
 
 const WINDOW_BARS = 1000;
+/** How long an order-book answer is reused. */
+const DEPTH_TTL_MS = 400;
 /** Bars a deep download gathers before writing them to the store. */
 const FLUSH_BARS = 200_000;
 /** How long a forming bar fetched for one request may answer the next. The live stream takes over after that. */
@@ -63,6 +65,7 @@ export class MarketDataService {
     readonly events = new Emitter<{ reconnect: { provider: string }; symbols: { provider: string; count: number } }>();
     private adapters = new Map<string, MarketDataAdapter>();
     private symbols = new Map<string, SymbolInfo>();
+    private depthCache = new Map<string, { at: number; book: Promise<Depth> }>();
     private byTicker = new Map<string, SymbolInfo>();
     private hubs = new Map<string, Hub>();
     private tradeHubs = new Map<string, { listeners: Set<(t: Tick) => void>; stop: Unsubscribe; last: Tick | null }>();
@@ -522,6 +525,26 @@ export class MarketDataService {
                 target.stop();
             }
         };
+    }
+
+    /**
+     * The order book of the instrument behind a chart symbol, best `levels` each side. Answers from
+     * a short cache, so a ladder polled by several screens costs the venue one request.
+     */
+    async depth(symbol: string, levels = 20): Promise<Depth> {
+        const info = this.underlying(symbol);
+        const { adapter } = this.resolve(info.symbol);
+        if (!adapter.getDepth)
+            throw Object.assign(new Error(`${adapter.name} publishes no order book`), { statusCode: 404 });
+        const n = Math.min(500, Math.max(1, Math.round(levels)));
+        const key = `${info.symbol}|${n}`;
+        const hit = this.depthCache.get(key);
+        if (hit && this.now() - hit.at < DEPTH_TTL_MS) return hit.book;
+        const book = adapter.getDepth(info.ticker, n);
+        this.depthCache.set(key, { at: this.now(), book });
+        book.catch(() => this.depthCache.delete(key));
+        if (this.depthCache.size > 200) this.depthCache.delete(this.depthCache.keys().next().value!);
+        return book;
     }
 
     /** Most recent price seen on any live stream of the symbol, if one is running. */

@@ -31,6 +31,12 @@ function fakeVenue(opts: { blockFirstHost?: boolean } = {}) {
                 ],
             });
         }
+        if (url.pathname === '/api/v3/depth') {
+            const n = Number(url.searchParams.get('limit'));
+            const rows = (from: number, dir: number) =>
+                Array.from({ length: n }, (_, i) => [(from + dir * i * 0.01).toFixed(8), (1 + i).toFixed(8)]);
+            return Response.json({ lastUpdateId: 1, bids: rows(99.99, -1), asks: rows(100.01, 1) });
+        }
         if (url.pathname === '/api/v3/klines') {
             const p = url.searchParams;
             const limit = Number(p.get('limit') ?? 500);
@@ -134,6 +140,18 @@ describe('BinanceAdapter REST', () => {
                 session: '24x7',
             },
         ]);
+        adapter.close();
+    });
+
+    it('reads the public order book at the smallest limit Binance accepts', async () => {
+        const venue = fakeVenue();
+        const adapter = new BinanceAdapter({ fetch: venue.fetchFn, restHosts: ['https://one.test'] });
+        const book = await adapter.getDepth('BTCUSDT', 12);
+        const call = venue.calls.find((u) => u.pathname === '/api/v3/depth')!;
+        expect(call.searchParams.get('limit')).toBe('20');
+        expect(book.bids).toHaveLength(12);
+        expect(book.bids[0]).toEqual([99.99, 1]);
+        expect(book.asks[1]).toEqual([100.02, 2]);
         adapter.close();
     });
 

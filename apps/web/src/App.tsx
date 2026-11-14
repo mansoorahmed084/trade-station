@@ -9,11 +9,15 @@ import { FormulaDialog } from './dialogs/FormulaDialog.tsx';
 import { LayoutsDialog } from './dialogs/LayoutsDialog.tsx';
 import { bindAlerts } from './lib/alert-lines.ts';
 import { useAlerts } from './lib/alerts-store.ts';
-import { getChartLines, getChartMarkers } from './lib/chart-lines.ts';
+import { getChartLines, getChartMarkers, lineBoxes } from './lib/chart-lines.ts';
 import { ServerClient } from './lib/client.ts';
 import { useParams } from './lib/params.ts';
 import { useUi } from './lib/store.ts';
 import { useTester } from './lib/tester-store.ts';
+import { bindTradingLines } from './lib/trading-lines.ts';
+import { bindTrading, useTrading } from './lib/trading-store.ts';
+import { ConfirmOrder } from './panels/trading/ConfirmOrder.tsx';
+import { QuickTrade } from './panels/trading/QuickTrade.tsx';
 import { ReplayBar } from './ReplayBar.tsx';
 import { RightDock } from './RightDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
@@ -31,6 +35,7 @@ export function App() {
     const dialog = useUi((s) => s.dialog);
     const setDialog = useUi((s) => s.setDialog);
     const alertDraft = useUi((s) => s.alertDraft);
+    const quickTrade = useTrading((s) => s.quickTrade);
 
     useEffect(() => {
         let cancelled = false;
@@ -59,6 +64,9 @@ export function App() {
     useEffect(() => useAlerts.getState().start(client), [client]);
     // Draw alert levels on the charts and follow drawings that alerts are attached to.
     useEffect(() => (workspace ? bindAlerts(workspace, client) : undefined), [workspace, client]);
+    // Trading: the account's state from the server, and its orders and positions drawn on the charts.
+    useEffect(() => bindTrading(client), [client]);
+    useEffect(() => (workspace ? bindTradingLines(workspace) : undefined), [workspace]);
 
     useEffect(() => {
         (window as any).__ts = {
@@ -70,6 +78,8 @@ export function App() {
             chartLines: getChartLines,
             tester: useTester,
             chartMarkers: getChartMarkers,
+            trading: useTrading,
+            lineBoxes,
         };
     }, [client, workspace]);
 
@@ -106,6 +116,7 @@ export function App() {
                                 {error ? `Waiting for the server on :8787 — ${error}` : 'Loading…'}
                             </div>
                         )}
+                        {workspace && quickTrade && <QuickTrade client={client} workspace={workspace} />}
                         {workspace && replayOpen && <ReplayBar workspace={workspace} />}
                         {workspace && bottomPanel && <BottomPanel client={client} workspace={workspace} />}
                     </div>
@@ -126,6 +137,7 @@ export function App() {
                 {workspace && dialog === 'alert' && alertDraft && (
                     <AlertDialog client={client} workspace={workspace} draft={alertDraft} onClose={closeDialog} />
                 )}
+                <ConfirmOrder />
                 <Toasts />
             </div>
         </AppContext.Provider>

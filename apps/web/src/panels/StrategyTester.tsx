@@ -17,6 +17,7 @@ import {
     type TesterTab,
     useTester,
 } from '../lib/tester-store.ts';
+import { useChartMarket } from '../lib/use-chart-market.ts';
 import { Button, Tabs } from '../ui.tsx';
 import { EquityChart } from './tester/EquityChart.tsx';
 import { dateTime, money, pct, price, qty, ratio, signed, tone } from './tester/format.ts';
@@ -43,29 +44,6 @@ const RANGES: { label: string; value: string; range: RangeChoice }[] = [
 const rangeValue = (r: RangeChoice) => (r.mode === 'bars' ? `b${r.bars}` : r.mode);
 /** Small windows re-run on every change; a deep one waits for the Run button. */
 const autoRuns = (r: RangeChoice) => r.mode === 'bars' && r.bars <= 20_000;
-
-/** The symbol and timeframe of the active chart, without any chart-type suffix. */
-function useChartMarket(workspace: VelaWorkspace): Market | null {
-    const [market, setMarket] = useState<Market | null>(null);
-    useEffect(() => {
-        const read = () => {
-            const m = (workspace.chart as any)?.market;
-            const symbol = stripChartType(String(m?.symbol ?? ''));
-            if (!symbol) return;
-            let timeframe = String(m?.timeframe ?? '60');
-            try {
-                timeframe = normalizeTimeframe(timeframe);
-            } catch {}
-            setMarket((prev) =>
-                prev && prev.symbol === symbol && prev.timeframe === timeframe ? prev : { symbol, timeframe },
-            );
-        };
-        read();
-        const timer = setInterval(read, 500);
-        return () => clearInterval(timer);
-    }, [workspace]);
-    return market;
-}
 
 /** Entry and exit fills of a run as chart markers. */
 function markersOf(trades: TradeRecord[]): ChartMarker[] {

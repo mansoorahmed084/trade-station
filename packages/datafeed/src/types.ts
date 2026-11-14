@@ -27,11 +27,20 @@ export interface MarketDataAdapter {
     subscribeBars(ticker: string, timeframe: string, onBar: (bar: Bar, eventTime: number) => void): Unsubscribe;
     /** Live trade prints, when the venue has them. */
     subscribeTrades?(ticker: string, onTick: (tick: Tick) => void): Unsubscribe;
+    /** The order book's best levels, when the venue publishes it. */
+    getDepth?(ticker: string, levels: number): Promise<Depth>;
     /** Fires after the upstream connection dropped and came back: subscribers may have missed data. */
     onReconnect?(handler: () => void): Unsubscribe;
     /** Open connections ahead of the first request, so it does not pay for a handshake. */
     warm?(): Promise<void>;
     close?(): void;
+}
+
+/** Resting size by price: bids best (highest) first, asks best (lowest) first. */
+export interface Depth {
+    bids: [price: number, size: number][];
+    asks: [price: number, size: number][];
+    time: number;
 }
 
 export interface SeriesKey {

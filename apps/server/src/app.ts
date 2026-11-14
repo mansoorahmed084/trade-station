@@ -171,6 +171,12 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         );
     });
 
+    /** The order book behind a symbol: `{ bids, asks, time }`, best prices first. */
+    server.get('/api/depth', async (req) => {
+        const q = req.query as { symbol?: string; levels?: string };
+        return data.depth(String(q.symbol ?? ''), q.levels === undefined ? 20 : Number(q.levels));
+    });
+
     server.get('/api/bars', async (req, reply) => {
         const q = req.query as Record<string, string | undefined>;
         const num = (v: string | undefined) => (v === undefined || v === '' ? undefined : Number(v));

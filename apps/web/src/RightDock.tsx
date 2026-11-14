@@ -3,9 +3,11 @@ import { useAlerts } from './lib/alerts-store.ts';
 import type { ServerClient } from './lib/client.ts';
 import { type RightPanel, useUi } from './lib/store.ts';
 import { Alerts } from './panels/Alerts.tsx';
+import { DomLadder } from './panels/trading/DomLadder.tsx';
+import { OrderTicket } from './panels/trading/OrderTicket.tsx';
 import { Watchlist } from './panels/Watchlist.tsx';
 
-/** The column beside the chart: watchlist and alerts now, with room for more. */
+/** The column beside the chart: watchlist, alerts, the order ticket and the depth ladder. */
 export function RightDock({
     client,
     workspace,
@@ -22,6 +24,8 @@ export function RightDock({
     const tabs: { id: RightPanel; label: string }[] = [
         { id: 'watchlist', label: 'Watchlist' },
         { id: 'alerts', label: unseen > 0 && panel !== 'alerts' ? `Alerts (${unseen})` : 'Alerts' },
+        { id: 'trade', label: 'Trade' },
+        { id: 'dom', label: 'Depth' },
     ];
     return (
         <div className="right-dock" data-testid="right-dock">
@@ -32,6 +36,7 @@ export function RightDock({
                         type="button"
                         className={`tab ${panel === t.id ? 'tab-on' : ''}`}
                         onClick={() => show(t.id)}
+                        data-testid={`dock-tab-${t.id}`}
                     >
                         {t.label}
                     </button>
@@ -43,6 +48,8 @@ export function RightDock({
             </div>
             {panel === 'watchlist' && <Watchlist client={client} workspace={workspace} providers={providers} />}
             {panel === 'alerts' && <Alerts client={client} />}
+            {panel === 'trade' && workspace && <OrderTicket client={client} workspace={workspace} />}
+            {panel === 'dom' && workspace && <DomLadder client={client} workspace={workspace} />}
         </div>
     );
 }

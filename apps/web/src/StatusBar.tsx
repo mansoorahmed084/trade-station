@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ConnectionStatus, PerfSnapshot, ServerClient } from './lib/client.ts';
+import { useTrading } from './lib/trading-store.ts';
+import { AccountBadge } from './panels/trading/AccountBadge.tsx';
 
 const LABEL: Record<ConnectionStatus, string> = {
     open: 'Connected',
@@ -11,6 +13,7 @@ export function StatusBar({ client }: { client: ServerClient }) {
     const [status, setStatus] = useState(client.status);
     const [perf, setPerf] = useState<PerfSnapshot>(client.perf());
     const [now, setNow] = useState(Date.now());
+    const account = useTrading((s) => s.account);
 
     useEffect(() => {
         const off = client.events.on('status', setStatus);
@@ -35,6 +38,15 @@ export function StatusBar({ client }: { client: ServerClient }) {
                 </span>
             )}
             <span className="spacer" />
+            {account && (
+                <span className="status-account" title={`Orders go to ${account.name}`}>
+                    <AccountBadge account={account} />
+                    <span className="muted">
+                        equity{' '}
+                        {account.equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                </span>
+            )}
             <span className="muted">{new Date(now).toISOString().slice(11, 19)} UTC</span>
         </div>
     );
