@@ -53,7 +53,7 @@ export class ServerClient {
     private pixel: number[] = [];
     private pendingPixel: number[] = [];
     private rafQueued = false;
-    private readonly base: string;
+    readonly base: string;
 
     constructor(base = '') {
         this.base = base;

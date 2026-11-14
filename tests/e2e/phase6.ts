@@ -77,7 +77,8 @@ try {
                 await t.workspace.chart.ready();
                 t.workspace.setLayout('1');
                 if (t.ui.getState().bottomPanel) t.ui.getState().toggleBottomPanel(t.ui.getState().bottomPanel);
-                await t.workspace.chart.setMarket({ symbol, timeframe: '1' });
+                // Hourly bars: the price range in view is wide enough that every order line stays on screen.
+                await t.workspace.chart.setMarket({ symbol, timeframe: '60' });
                 for (const h of t.workspace.chart.indicators()) if (h.nativeType !== 'volume') h.remove();
             },
             SYMBOL,

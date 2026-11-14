@@ -2,7 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SyntheticAdapter } from '@ts/datafeed';
+import { BinanceSpotBroker } from '@ts/oms';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
+import { FakeBinance } from '../../../packages/oms/test/fake-binance.ts';
 import { type App, createApp } from '../src/app.ts';
 
 const MIN = 60_000;
@@ -250,6 +253,54 @@ describe('kill switch', () => {
     }, 30_000);
 });
 
+describe('kill switch on an exchange account', () => {
+    it('cancels the orders and sells the holdings on the exchange itself', async () => {
+        const venue = new FakeBinance();
+        await venue.start();
+        try {
+            venue.prices.set('BTCUSDT', 100);
+            const exchange = new BinanceSpotBroker({
+                id: 'kill-sandbox',
+                apiKey: venue.apiKey,
+                apiSecret: venue.secret,
+                restBase: venue.url,
+                wsApiBase: venue.wsUrl,
+                WebSocket: WebSocket as any,
+                instrument: (symbol) => ({ symbol, tickSize: 0.01, lotSize: 0.0001, minQty: 0.0001 }),
+            });
+            app.trading.register(exchange);
+            await exchange.start();
+            await until(
+                () => exchange.isConnected,
+                (v) => v,
+            );
+            await exchange.placeOrder({ symbol: 'BINANCE:BTCUSDT', side: 'buy', type: 'market', qty: 1 });
+            await exchange.placeOrder({ symbol: 'BINANCE:BTCUSDT', side: 'buy', type: 'limit', qty: 1, limit: 90 });
+            await until(
+                () => exchange.positions().length,
+                (n) => n === 1,
+            );
+            await exchange.setPositionBrackets('BINANCE:BTCUSDT', { takeProfit: 120, stopLoss: 80 });
+            expect(venue.orders.filter((o) => o.status === 'NEW').length).toBe(3);
+            const result = await app.trading.kill({ flatten: true, reason: 'exchange test', by: 'user' });
+            expect(result.errors, result.errors.join(' | ')).toEqual([]);
+            // On the exchange: nothing left working, and the coin was sold at the market.
+            expect(venue.orders.filter((o) => o.status === 'NEW')).toEqual([]);
+            expect(venue.trades.some((t) => !t.isBuyer && t.qty === 1)).toBe(true);
+            expect(
+                await until(
+                    () => exchange.positions().length,
+                    (n) => n === 0,
+                ),
+            ).toBe(0);
+            exchange.close();
+        } finally {
+            await call('POST', '/api/trading/resume');
+            await venue.stop();
+        }
+    }, 20_000);
+});
+
 describe('inbound webhook', () => {
     let hook: any;
 
@@ -314,6 +365,9 @@ describe('inbound webhook', () => {
             .body;
         expect((await send({ passphrase: hook.passphrase, ticker: 'SYNTH:BETA', action: 'buy' })).status).toBe(401);
         expect((await send({ passphrase: rotated.passphrase, ticker: 'SYNTH:BETA', action: 'buy' })).status).toBe(200);
+        // Guessing is slowed down.
+        for (let i = 0; i < 10; i++) await send({ passphrase: `guess-${i}`, ticker: 'SYNTH:BETA', action: 'buy' });
+        expect((await send({ passphrase: rotated.passphrase, ticker: 'SYNTH:BETA', action: 'buy' })).status).toBe(429);
         const log = (await call('GET', `/api/audit?actor=webhook:${hook.id}`)).body;
         expect(log.some((a: any) => a.outcome === 'rejected' && a.detail.reason === 'wrong passphrase')).toBe(true);
         expect(JSON.stringify(log)).not.toContain(rotated.passphrase);

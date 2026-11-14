@@ -16,6 +16,7 @@ import { registerAutomationRoutes } from './routes/automation.ts';
 import { registerBacktestRoutes } from './routes/backtest.ts';
 import { registerScriptRoutes, ScriptStore } from './routes/scripts.ts';
 import { registerTradingRoutes } from './routes/trading.ts';
+import { FIELDS, Screener } from './screener.ts';
 import { AuditLog } from './trading/audit.ts';
 import { TradingService } from './trading/service.ts';
 
@@ -105,6 +106,13 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         if (origin && req.method !== 'GET' && req.method !== 'HEAD' && !isLocalOrigin(origin)) {
             return reply.code(403).send({ error: 'forbidden origin' });
         }
+    });
+
+    server.addHook('onSend', async (_req, reply, payload) => {
+        reply.header('x-content-type-options', 'nosniff');
+        reply.header('x-frame-options', 'DENY');
+        reply.header('referrer-policy', 'no-referrer');
+        return payload;
     });
 
     server.setErrorHandler((err: any, _req, reply) => {
@@ -247,6 +255,18 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
             return (all.find((x) => x.symbol === 'BINANCE:BTCUSDT') ?? all[0])?.symbol ?? '';
         },
     });
+
+    const screener = new Screener({ data, host: scriptHost, scriptSource: (id) => scripts.get(id)?.source });
+    /** Scan symbols with built-in measures and, optionally, a Pine script's plots. */
+    server.post('/api/screener/run', async (req, reply) => {
+        try {
+            return await screener.run((req.body ?? {}) as any);
+        } catch (err: any) {
+            if (err?.stage) return reply.code(422).send({ error: err.message, stage: err.stage, line: err.line });
+            throw err;
+        }
+    });
+    server.get('/api/screener/fields', async () => FIELDS);
 
     const backtest = new BacktestService({
         data,

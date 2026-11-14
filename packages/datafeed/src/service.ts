@@ -547,6 +547,19 @@ export class MarketDataService {
         return book;
     }
 
+    /** The most recent price seen on a live stream of the symbol and when it was seen (venue time). */
+    lastQuote(symbol: string): { price: number; time: number } | undefined {
+        const { info } = this.resolve(symbol);
+        const trade = this.tradeHubs.get(info.symbol)?.last;
+        if (trade) return { price: trade.price, time: trade.time };
+        let best: { price: number; time: number } | undefined;
+        for (const hub of this.hubs.values()) {
+            if (hub.symbol !== info.symbol || !hub.last || !hub.lastEventTime) continue;
+            if (!best || hub.lastEventTime > best.time) best = { price: hub.last.close, time: hub.lastEventTime };
+        }
+        return best;
+    }
+
     /** Most recent price seen on any live stream of the symbol, if one is running. */
     lastPrice(symbol: string): number | undefined {
         const { info } = this.resolve(symbol);

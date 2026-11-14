@@ -140,7 +140,8 @@ export const useAlerts = create<AlertsState>((set, get) => ({
 
     toast(toast, ms = 6000) {
         const id = `t${++toastSeq}`;
-        set((s) => ({ toasts: [...s.toasts, { ...toast, id }].slice(-5) }));
+        // At most three at a time, so they never bury the panels under them.
+        set((s) => ({ toasts: [...s.toasts, { ...toast, id }].slice(-3) }));
         setTimeout(() => get().dismiss(id), ms);
     },
 

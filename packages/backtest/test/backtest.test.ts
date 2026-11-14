@@ -442,3 +442,22 @@ describe('order size', () => {
         }
     });
 });
+
+describe('a position still open at the end', () => {
+    it('is reported from the bar it was entered on, at its average price', () => {
+        // The first of these markets that ends with a position open.
+        let found = false;
+        for (let seed = 1; seed < 60 && !found; seed++) {
+            const { series } = market(600, seed);
+            const run = runBacktest(strategyById('supertrend')!, series, { qty: { type: 'fixed', value: 2 } });
+            const open = run.trades.find((t) => t.open);
+            if (!open) continue;
+            found = true;
+            const fill = run.broker.fills.filter((f) => f.qty > 0).at(-1)!;
+            expect(open.entryTime).toBe(fill.time);
+            expect(open.entryTime).toBeLessThan(series.time[series.length - 1]);
+            expect(open.entryPrice).toBeCloseTo(fill.price, 9);
+        }
+        expect(found).toBe(true);
+    });
+});

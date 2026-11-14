@@ -602,15 +602,42 @@ export class BinanceSpotBroker implements BrokerPort {
         return { ...this.all.get(id)! };
     }
 
+    /** Cancel every working order on every symbol, one exchange call per symbol. */
+    async cancelAll(): Promise<number> {
+        const symbols = new Set([...this.all.values()].filter((o) => o.status === 'working').map((o) => o.symbol));
+        let n = 0;
+        for (const symbol of symbols) {
+            await this.signed('DELETE', '/api/v3/openOrders', { symbol: this.ticker(symbol) });
+            for (const o of this.all.values()) {
+                if (o.symbol !== symbol || !isOpen(o)) continue;
+                this.markCancelled(o.id, 'cancelled with every other order');
+                this.forget(o.id);
+                n++;
+            }
+            this.exits.delete(symbol);
+        }
+        // Waiting bracket exits belong to entries that are now cancelled.
+        for (const id of Object.keys(this.waiting)) this.forget(id);
+        await this.refreshBalances();
+        return n;
+    }
+
     async closePosition(symbol: string, qty?: number): Promise<OrderState | null> {
-        const held = this.held(symbol);
-        if (!(held > 0)) return null;
+        if (!(this.held(symbol) > 0)) return null;
         const exits = this.exits.get(symbol);
-        if (exits)
+        if (exits) {
             await this.signed('DELETE', '/api/v3/orderList', {
                 symbol: this.ticker(symbol),
                 listClientOrderId: exits.list,
             }).catch(() => {});
+            if (exits.tp) this.markCancelled(exits.tp);
+            if (exits.sl) this.markCancelled(exits.sl);
+            this.exits.delete(symbol);
+        }
+        // Cancelling unlocks coins; the stream may not have said so yet, so ask the exchange.
+        await this.refreshBalances();
+        const held = this.held(symbol);
+        if (!(held > 0)) return null;
         const free = this.balances.get(this.base(symbol))?.free ?? held;
         return this.placeOrder({
             symbol,
@@ -620,6 +647,17 @@ export class BinanceSpotBroker implements BrokerPort {
             reduceOnly: true,
             comment: 'close position',
         });
+    }
+
+    private async refreshBalances(): Promise<void> {
+        const account = await this.signed('GET', '/api/v3/account');
+        this.balances.clear();
+        for (const b of account.balances ?? []) {
+            const free = Number(b.free);
+            const locked = Number(b.locked);
+            if (free || locked) this.balances.set(b.asset, { free, locked });
+        }
+        this.events.emit('account', this.account());
     }
 
     async reversePosition(): Promise<OrderState | null> {

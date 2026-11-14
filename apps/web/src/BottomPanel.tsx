@@ -1,7 +1,10 @@
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { useCallback } from 'react';
+import { ErrorBoundary } from './ErrorBoundary.tsx';
 import type { ServerClient } from './lib/client.ts';
 import { type BottomPanel as PanelId, useUi } from './lib/store.ts';
+import { Automation } from './panels/automation/Automation.tsx';
+import { Screener } from './panels/Screener.tsx';
 import { ScriptEditor } from './panels/ScriptEditor.tsx';
 import { StrategyTester } from './panels/StrategyTester.tsx';
 import { AccountManager } from './panels/trading/AccountManager.tsx';
@@ -10,6 +13,8 @@ const TABS: { id: PanelId; label: string }[] = [
     { id: 'editor', label: 'Pine editor' },
     { id: 'tester', label: 'Strategy tester' },
     { id: 'trading', label: 'Account' },
+    { id: 'automation', label: 'Automation' },
+    { id: 'screener', label: 'Screener' },
 ];
 
 /** The dock under the chart: the script editor, the strategy tester and the account manager. */
@@ -59,9 +64,13 @@ export function BottomPanel({ client, workspace }: { client: ServerClient; works
                 </button>
             </div>
             <div className="bottom-body">
-                {panel === 'editor' && <ScriptEditor client={client} workspace={workspace} />}
-                {panel === 'tester' && <StrategyTester client={client} workspace={workspace} />}
-                {panel === 'trading' && <AccountManager workspace={workspace} />}
+                <ErrorBoundary key={panel} name={TABS.find((t) => t.id === panel)?.label ?? 'This panel'}>
+                    {panel === 'editor' && <ScriptEditor client={client} workspace={workspace} />}
+                    {panel === 'tester' && <StrategyTester client={client} workspace={workspace} />}
+                    {panel === 'trading' && <AccountManager workspace={workspace} />}
+                    {panel === 'automation' && <Automation client={client} workspace={workspace} />}
+                    {panel === 'screener' && <Screener client={client} workspace={workspace} />}
+                </ErrorBoundary>
             </div>
         </div>
     );

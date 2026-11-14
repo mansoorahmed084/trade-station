@@ -129,6 +129,12 @@ export class PaperBroker implements BrokerPort {
         return this.prices.get(symbol)?.price;
     }
 
+    /** The last price and when it was seen. */
+    quote(symbol: string): { price: number; time: number } | undefined {
+        const q = this.prices.get(symbol);
+        return q ? { ...q } : undefined;
+    }
+
     /** A trade printed on the market. Waiting orders it reaches fill; positions are marked to it. */
     tick(symbol: string, price: number, time = this.now()): void {
         if (!(price > 0)) return;

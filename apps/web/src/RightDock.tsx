@@ -1,4 +1,5 @@
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
+import { ErrorBoundary } from './ErrorBoundary.tsx';
 import { useAlerts } from './lib/alerts-store.ts';
 import type { ServerClient } from './lib/client.ts';
 import { type RightPanel, useUi } from './lib/store.ts';
@@ -46,10 +47,12 @@ export function RightDock({
                     ×
                 </button>
             </div>
-            {panel === 'watchlist' && <Watchlist client={client} workspace={workspace} providers={providers} />}
-            {panel === 'alerts' && <Alerts client={client} />}
-            {panel === 'trade' && workspace && <OrderTicket client={client} workspace={workspace} />}
-            {panel === 'dom' && workspace && <DomLadder client={client} workspace={workspace} />}
+            <ErrorBoundary key={panel} name={tabs.find((t) => t.id === panel)?.label ?? 'This panel'}>
+                {panel === 'watchlist' && <Watchlist client={client} workspace={workspace} providers={providers} />}
+                {panel === 'alerts' && <Alerts client={client} />}
+                {panel === 'trade' && workspace && <OrderTicket client={client} workspace={workspace} />}
+                {panel === 'dom' && workspace && <DomLadder client={client} workspace={workspace} />}
+            </ErrorBoundary>
         </div>
     );
 }

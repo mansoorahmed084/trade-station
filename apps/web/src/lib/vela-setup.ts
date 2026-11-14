@@ -2,6 +2,7 @@ import { registerIcon, registerWidgetAction, registerWidgetAttachment } from '@l
 import { registerChartLines } from './chart-lines.ts';
 import { isDerived, registerChartTypes, stripChartType } from './chart-types.ts';
 import { exportActiveChart } from './export.ts';
+import { registerExtraChartTypes } from './extra-chart-types.ts';
 import { useUi } from './store.ts';
 import { lastPrice, placeOrder, useTrading } from './trading-store.ts';
 
@@ -15,6 +16,7 @@ export function setupVela(): void {
     if (done) return;
     done = true;
     registerChartTypes();
+    registerExtraChartTypes();
     registerChartLines();
 
     // Our alerts run on the server and have their own panel: retire the chart's built-in bell,

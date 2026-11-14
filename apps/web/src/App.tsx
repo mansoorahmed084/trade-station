@@ -1,3 +1,4 @@
+import { chartTypes } from '@luxalgo/vela/plugin';
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './app-context.ts';
@@ -9,6 +10,7 @@ import { FormulaDialog } from './dialogs/FormulaDialog.tsx';
 import { LayoutsDialog } from './dialogs/LayoutsDialog.tsx';
 import { bindAlerts } from './lib/alert-lines.ts';
 import { useAlerts } from './lib/alerts-store.ts';
+import { bindAutomation, useAutomation } from './lib/automation-store.ts';
 import { getChartLines, getChartMarkers, lineBoxes } from './lib/chart-lines.ts';
 import { ServerClient } from './lib/client.ts';
 import { useParams } from './lib/params.ts';
@@ -66,6 +68,7 @@ export function App() {
     useEffect(() => (workspace ? bindAlerts(workspace, client) : undefined), [workspace, client]);
     // Trading: the account's state from the server, and its orders and positions drawn on the charts.
     useEffect(() => bindTrading(client), [client]);
+    useEffect(() => bindAutomation(client), [client]);
     useEffect(() => (workspace ? bindTradingLines(workspace) : undefined), [workspace]);
 
     useEffect(() => {
@@ -79,7 +82,9 @@ export function App() {
             tester: useTester,
             chartMarkers: getChartMarkers,
             trading: useTrading,
+            automation: useAutomation,
             lineBoxes,
+            chartTypes: () => chartTypes().map((t: any) => t.id),
         };
     }, [client, workspace]);
 

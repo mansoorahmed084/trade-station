@@ -281,10 +281,12 @@ export function runBacktest(strategy: NativeStrategy, bars: BarSeries, options: 
     if (broker.position !== 0 && n > 0) {
         const last = bars.close[n - 1];
         const side = broker.position > 0 ? 'long' : 'short';
+        // Entered when its oldest lot was bought, not on the last bar.
+        const lots = broker.exportState().lots;
         trades.push({
             side,
             qty: Math.abs(broker.position),
-            entryTime: bars.time[n - 1],
+            entryTime: lots.length ? lots[0].time : bars.time[n - 1],
             entryPrice: broker.avgPrice,
             pnl: broker.unrealized(last),
             commission: 0,

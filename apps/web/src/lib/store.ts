@@ -2,7 +2,7 @@ import type { AlertInput } from '@ts/alerts/types';
 import { create } from 'zustand';
 
 export type RightPanel = 'watchlist' | 'alerts' | 'trade' | 'dom';
-export type BottomPanel = 'editor' | 'tester' | 'trading';
+export type BottomPanel = 'editor' | 'tester' | 'trading' | 'automation' | 'screener';
 export type DialogId = 'layouts' | 'formula' | 'chartType' | 'alert';
 
 /** What the alert dialog opens with: an existing alert to edit, or values to start a new one from. */

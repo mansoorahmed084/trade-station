@@ -171,6 +171,8 @@ export interface BrokerPort {
     closePosition(symbol: string, qty?: number): Promise<OrderState | null>;
     /** Turn a long into a short of the same size, or the other way round, at the market. */
     reversePosition(symbol: string): Promise<OrderState | null>;
+    /** Cancel every working order at once (the kill switch). Returns how many were cancelled. */
+    cancelAll?(): Promise<number>;
     /** A trade printed on the market, for accounts that value positions or fill orders themselves. */
     tick?(symbol: string, price: number, time?: number): void;
     /** Symbols the account needs live prices for. */

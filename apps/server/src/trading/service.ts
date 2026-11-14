@@ -55,6 +55,8 @@ const LIMITS_KEY = 'trading.limits';
 const THROTTLE_MS = 250;
 /** How long a price feed outlives the last order or position that needed it. */
 const FEED_LINGER_MS = 60_000;
+/** A price older than this is refreshed before an order is placed. */
+const STALE_MS = 15_000;
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 
@@ -281,6 +283,13 @@ export class TradingService {
         let closed = 0;
         const errors: string[] = [];
         for (const broker of this.accounts.values()) {
+            if (broker.cancelAll) {
+                try {
+                    cancelled += await broker.cancelAll();
+                } catch (err: any) {
+                    errors.push(`${broker.name}: could not cancel its orders: ${err?.message ?? err}`);
+                }
+            }
             // Entries first: cancelling one also cancels the exits waiting for it.
             const open = broker
                 .orders()
@@ -299,7 +308,8 @@ export class TradingService {
             if (options.flatten) {
                 for (const p of broker.positions()) {
                     try {
-                        await this.ensurePrice(p.symbol);
+                        // A market order needs no price from us; the exchange or paper book has its own.
+                        await this.ensurePrice(p.symbol).catch(() => undefined);
                         const order = await broker.closePosition(p.symbol);
                         if (order && order.status !== 'rejected') closed++;
                         else if (order) errors.push(`${broker.name}: could not close ${p.symbol}: ${order.reason}`);
@@ -524,22 +534,35 @@ export class TradingService {
         }
     }
 
-    /** A current price for the symbol, starting its feed if needed. */
+    /**
+     * A current price for the symbol, starting its feed if needed. A price older than
+     * `STALE_MS` (by the market clock) is refreshed from the latest stream price or one-minute close
+     * first, so a quiet feed never fills an order at an old price.
+     */
     private async ensurePrice(symbol: string): Promise<number | undefined> {
         this.feed(symbol);
-        const known = this.paper.lastPrice(symbol) ?? this.deps.data.lastPrice(symbol);
-        if (known !== undefined) {
-            if (this.paper.lastPrice(symbol) === undefined) this.tickAll(symbol, known, this.deps.data.clock());
-            return known;
+        const now = this.deps.data.clock();
+        const held = this.paper.quote(symbol);
+        if (held && now - held.time < STALE_MS) return held.price;
+        // A stream's last print counts only while it is itself recent: a quiet stream is no better.
+        let live: number | undefined;
+        try {
+            const q = this.deps.data.lastQuote(symbol);
+            if (q && now - q.time < STALE_MS) live = q.price;
+        } catch {}
+        if (live !== undefined) {
+            this.tickAll(symbol, live, now);
+            return live;
         }
-        // No stream has printed yet: use the latest one-minute close.
         try {
             const bars = await this.deps.data.getBars(symbol, '1', { limit: 1 });
             const last = bars.last();
-            if (last && this.paper.lastPrice(symbol) === undefined)
-                this.tickAll(symbol, last.close, this.deps.data.clock());
+            if (last) {
+                this.tickAll(symbol, last.close, now);
+                return last.close;
+            }
         } catch {}
-        return this.paper.lastPrice(symbol);
+        return held?.price;
     }
 
     /** A live price, to every account that wants one. */
@@ -569,8 +592,15 @@ export class TradingService {
         try {
             stop = data.subscribeTrades(symbol, (tick) => this.tickAll(symbol, tick.price, tick.time));
         } catch {
-            // A venue without a trade stream: follow the forming one-minute bar instead.
-            stop = data.subscribe(symbol, '1', (bar) => this.tickAll(symbol, bar.close, data.clock()));
+            try {
+                // A venue without a trade stream: follow the forming one-minute bar instead.
+                stop = data.subscribe(symbol, '1', (bar) => this.tickAll(symbol, bar.close, data.clock()));
+            } catch (err: any) {
+                // No market data for it here (an exchange account can hold what no chart shows): the
+                // account values it on its own.
+                this.deps.log?.(`no price feed for ${symbol}: ${err?.message ?? err}`);
+                stop = () => {};
+            }
         }
         this.feeds.set(symbol, { stop });
     }

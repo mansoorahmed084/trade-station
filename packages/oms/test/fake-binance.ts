@@ -251,6 +251,21 @@ export class FakeBinance {
                     );
                     return send(200, { listClientOrderId: list, orders: [this.view(above), this.view(below)] });
                 }
+                case 'DELETE /api/v3/openOrders': {
+                    const open = this.orders.filter(
+                        (o) => o.symbol === params.symbol && (o.status === 'NEW' || o.status === 'PARTIALLY_FILLED'),
+                    );
+                    const lists = new Set<string>();
+                    for (const o of open) {
+                        // The second leg of a list shares its partner's lock.
+                        this.cancel(o, !!o.list && lists.has(o.list));
+                        if (o.list) lists.add(o.list);
+                    }
+                    return send(
+                        200,
+                        open.map((o) => this.view(o)),
+                    );
+                }
                 case 'DELETE /api/v3/orderList': {
                     const legs = this.orders.filter(
                         (o) =>

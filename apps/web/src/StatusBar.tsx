@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ConnectionStatus, PerfSnapshot, ServerClient } from './lib/client.ts';
 import { useTrading } from './lib/trading-store.ts';
+import { KillSwitch } from './panels/automation/KillSwitch.tsx';
 import { AccountBadge } from './panels/trading/AccountBadge.tsx';
 
 const LABEL: Record<ConnectionStatus, string> = {
@@ -47,6 +48,7 @@ export function StatusBar({ client }: { client: ServerClient }) {
                     </span>
                 </span>
             )}
+            <KillSwitch />
             <span className="muted">{new Date(now).toISOString().slice(11, 19)} UTC</span>
         </div>
     );

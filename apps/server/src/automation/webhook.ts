@@ -52,6 +52,7 @@ function field(msg: Record<string, any>, ...paths: string[]): unknown {
 
 export class WebhookService {
     private hooks: WebhookConfig[];
+    private misses = new Map<string, number[]>();
     private deps: { db: Db; data: MarketDataService; trading: TradingService; audit?: AuditLog };
 
     constructor(deps: { db: Db; data: MarketDataService; trading: TradingService; audit?: AuditLog }) {
@@ -151,9 +152,15 @@ export class WebhookService {
         } catch {
             throw this.refuse(hook, 'the message is not JSON', 400);
         }
+        // Guessing is slowed down: after ten wrong passphrases in a minute, the address rests.
+        const cutoff = this.deps.data.clock() - 60_000;
+        const misses = (this.misses.get(id) ?? []).filter((t) => t > cutoff);
+        this.misses.set(id, misses);
+        if (misses.length >= 10) throw fail('too many wrong passphrases: try again in a minute', 429);
         const given = Buffer.from(String(msg.passphrase ?? ''));
         const expected = Buffer.from(hook.passphrase);
         if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+            misses.push(this.deps.data.clock());
             this.deps.audit?.record({
                 actor: `webhook:${hook.id}`,
                 action: 'webhook',

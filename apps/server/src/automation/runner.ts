@@ -40,6 +40,8 @@ export interface RunnerConfig {
     startWith: 'next-signal' | 'now';
     /** Where to announce the runner's fills. */
     notify?: NotifyTargets;
+    /** Units per entry, overriding the strategy's own sizing (exact and independent of equity). */
+    qty?: number;
     createdAt: number;
 }
 
@@ -76,6 +78,15 @@ export interface RunnerState {
     startedAt: number | null;
     decisions: Decision[];
     divergences: Divergence[];
+}
+
+export interface VerifyResult {
+    checked: number;
+    /** Bars where the live decision and the replay wanted a different side (or one wanted to be flat). */
+    mismatches: { time: number; live: number; replay: number }[];
+    /** Bars where both wanted the same side but a different size. */
+    sized: number;
+    maxSizeDiffPct: number;
 }
 
 export interface RunnerView extends RunnerConfig {
@@ -464,6 +475,16 @@ export class AutomationService {
         return this.view(r);
     }
 
+    /**
+     * Decide on the latest closed bar now, without waiting for the market to report a new one.
+     * Used to drive runners through simulated time; a no-op when the bar was already decided on.
+     */
+    async decideNow(id: string): Promise<RunnerView> {
+        const r = this.runner(id);
+        await r.decideSoon();
+        return this.view(r);
+    }
+
     stopRunner(id: string): RunnerView {
         const r = this.runner(id);
         r.pause();
@@ -488,12 +509,10 @@ export class AutomationService {
      * Replay the strategy over the period the runner has been deciding on, as one continuous
      * backtest, and compare: every bar where the live decision and the replay disagree is listed.
      */
-    async verify(
-        id: string,
-    ): Promise<{ checked: number; mismatches: { time: number; live: number; replay: number }[] }> {
+    async verify(id: string, since?: number): Promise<VerifyResult> {
         const r = this.runner(id);
-        const decisions = r.state.decisions;
-        if (decisions.length === 0) return { checked: 0, mismatches: [] };
+        const decisions = since === undefined ? r.state.decisions : r.state.decisions.filter((d) => d.time >= since);
+        if (decisions.length === 0) return { checked: 0, mismatches: [], sized: 0, maxSizeDiffPct: 0 };
         const c = r.config;
         const ms = timeframeMs(c.timeframe);
         const first = decisions[0].time;
@@ -522,12 +541,20 @@ export class AutomationService {
             return Number(p.toPrecision(12));
         };
         const mismatches: { time: number; live: number; replay: number }[] = [];
+        let sized = 0;
+        let maxSizeDiffPct = 0;
         for (const d of decisions) {
             const replay = positionAt(d.time);
-            if (Math.abs(replay - d.target) > Math.max(1e-9, Math.abs(d.target) * 1e-6))
-                mismatches.push({ time: d.time, live: d.target, replay });
+            if (Math.abs(replay - d.target) <= Math.max(1e-9, Math.abs(d.target) * 1e-6)) continue;
+            // Same side, different size: sizing by equity sees a different equity in a window of
+            // recent history than in one long run. A different side (or flat against not) is a
+            // real disagreement.
+            if (Math.sign(replay) === Math.sign(d.target) && replay !== 0) {
+                sized++;
+                maxSizeDiffPct = Math.max(maxSizeDiffPct, (Math.abs(replay - d.target) / Math.abs(replay)) * 100);
+            } else mismatches.push({ time: d.time, live: d.target, replay });
         }
-        return { checked: decisions.length, mismatches };
+        return { checked: decisions.length, mismatches, sized, maxSizeDiffPct };
     }
 
     close(): void {
@@ -588,7 +615,11 @@ export class AutomationService {
                     .slice(0, 80) || `${description.title} · ${symbol} ${timeframe}`,
             strategy: input.strategy as StrategyRef,
             inputs: input.inputs,
-            properties: input.properties,
+            properties:
+                input.qty !== undefined && Number(input.qty) > 0
+                    ? { ...input.properties, qty: { type: 'fixed', value: Number(input.qty) } }
+                    : input.properties,
+            qty: input.qty !== undefined && Number(input.qty) > 0 ? Number(input.qty) : undefined,
             symbol,
             timeframe,
             mode,

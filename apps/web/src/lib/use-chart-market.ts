@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import { stripChartType } from './chart-types.ts';
 
 function readMarket(workspace: VelaWorkspace): { symbol: string; timeframe: string } | null {
-    const m = (workspace.chart as any)?.market;
+    let m: any;
+    try {
+        m = (workspace.chart as any)?.market;
+    } catch {
+        // The workspace is being rebuilt or torn down: no active chart for a moment.
+        return null;
+    }
     const symbol = stripChartType(String(m?.symbol ?? ''));
     if (!symbol) return null;
     let timeframe = String(m?.timeframe ?? '60');
