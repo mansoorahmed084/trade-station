@@ -269,11 +269,9 @@ try {
     await inPage(
         page,
         (value: number) =>
-            (window as any).__ts.ui
-                .getState()
-                .openAlertDialog({
-                    preset: { condition: { left: { type: 'price' }, op: 'crossing', right: { type: 'value', value } } },
-                }),
+            (window as any).__ts.ui.getState().openAlertDialog({
+                preset: { condition: { left: { type: 'price' }, op: 'crossing', right: { type: 'value', value } } },
+            }),
         level,
     );
     await page.waitForSelector('.modal');

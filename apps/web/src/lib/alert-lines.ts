@@ -109,13 +109,11 @@ export function bindAlerts(ws: VelaWorkspace, client: ServerClient): () => void 
                             .getState()
                             .setActive(client, alert.id, false)
                             .catch(() => {});
-                        useAlerts
-                            .getState()
-                            .toast({
-                                title: 'Alert paused',
-                                text: `"${alert.name}" was attached to a drawing that has been removed.`,
-                                kind: 'info',
-                            });
+                        useAlerts.getState().toast({
+                            title: 'Alert paused',
+                            text: `"${alert.name}" was attached to a drawing that has been removed.`,
+                            kind: 'info',
+                        });
                     }
                 }
             }),
