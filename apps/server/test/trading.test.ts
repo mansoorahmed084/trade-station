@@ -77,14 +77,16 @@ describe('paper trading over the API', () => {
         await wait(400);
         const kinds = new Set(events.map((e) => e.type));
         expect([...kinds].sort()).toEqual(['account', 'execution', 'order', 'position']);
-        // The live feed keeps marking the position: its last price moves on. The synthetic venue
-        // prints only when the price moves a whole tick, which can take a few seconds.
-        const prices = new Set<number>();
-        for (let waited = 0; waited < 8000 && prices.size < 2; waited += 100) {
-            for (const e of events) if (e.type === 'position') prices.add(e.position.lastPrice);
-            await wait(100);
+        // The paper account follows the venue's trade stream: it holds the price that stream printed last.
+        expect(app.data.stats().tradeHubs).toBeGreaterThanOrEqual(1);
+        let streamed: number | undefined;
+        for (let waited = 0; waited < 3000; waited += 50) {
+            streamed = app.data.lastPrice('SYNTH:ALPHA');
+            if (streamed !== undefined && app.trading.paper.lastPrice('SYNTH:ALPHA') === streamed) break;
+            await wait(50);
         }
-        expect(prices.size).toBeGreaterThan(1);
+        expect(streamed).toBeDefined();
+        expect(app.trading.paper.lastPrice('SYNTH:ALPHA')).toBe(streamed);
     });
 
     it('trades the underlying of a chart-type symbol, and refuses a formula', async () => {
