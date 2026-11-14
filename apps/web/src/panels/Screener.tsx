@@ -301,7 +301,10 @@ export function Screener({ client, workspace }: { client: ServerClient; workspac
                                         key={c.id}
                                         className={c.id === 'symbol' ? '' : 'num'}
                                         onClick={() =>
-                                            setSort({ id: c.id, desc: sort.id === c.id ? !sort.desc : true })
+                                            setSort({
+                                                id: c.id,
+                                                desc: sort.id === c.id ? !sort.desc : c.id !== 'symbol',
+                                            })
                                         }
                                         title="Sort"
                                     >

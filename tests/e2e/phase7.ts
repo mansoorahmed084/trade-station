@@ -29,9 +29,10 @@ async function until<T>(read: () => Promise<T>, done: (v: T) => boolean, ms = 10
     return last;
 }
 const send = async (method: string, path: string, body?: unknown) => {
+    // A JSON content type with no body is refused by the server: send one only with a body.
     const res = await fetch(api(path), {
         method,
-        headers: { 'content-type': 'application/json' },
+        headers: body === undefined ? {} : { 'content-type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -125,7 +126,25 @@ try {
         `held ${started.state.held}; toast "${toast?.replace(/\s+/g, ' ').slice(0, 70)}"`,
     );
     await page.click('[data-testid="runner-row"]');
-    await page.waitForSelector('[data-testid="decisions"] tbody tr');
+    const decisionRow = await page
+        .waitForSelector('[data-testid="decisions"] tbody tr', { timeout: 10_000 })
+        .catch(() => null);
+    if (!decisionRow) {
+        const panel = await page
+            .$eval('[data-testid="automation"]', (e) => (e as HTMLElement).innerText.replace(/\s+/g, ' ').slice(0, 400))
+            .catch(() => 'no panel');
+        const store = await inPage<any>(page, () =>
+            Object.values((window as any).__ts.automation.getState().runners).map((r: any) => [
+                r.state.status,
+                r.state.decisions.length,
+            ]),
+        );
+        check(
+            'the runner’s decisions are listed when its row is opened',
+            false,
+            `panel: ${panel}; store: ${JSON.stringify(store)}`,
+        );
+    }
     await page.click('[data-testid="runner-verify"]');
     const verdict = await page
         .waitForSelector('[data-testid="runner-check"]', { timeout: 20_000 })

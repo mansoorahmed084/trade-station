@@ -70,13 +70,13 @@ try {
             style,
         );
     const shares: Record<string, number> = {};
-    for (const s of ['volumecandles', 'hlcarea', 'highlow']) shares[s] = await painted(s);
+    for (const s of ['volumecandles', 'highlow', 'hlcarea']) shares[s] = await painted(s);
     await page.screenshot({ path: 'tests/e2e/phase8-hlcarea.png' });
     const other = await inPage<number>(page, async () => {
         const chart = (window as any).__ts.workspace.chart;
         chart.renderer.set('priceStyle', 'candles');
         await new Promise((r) => setTimeout(r, 400));
-        const canvas = document.querySelector('canvas[data-ts-style="highlow"]') as HTMLCanvasElement;
+        const canvas = document.querySelector('canvas[data-ts-style="hlcarea"]') as HTMLCanvasElement;
         const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
         let on = 0;
         for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) on++;

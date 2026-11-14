@@ -1,8 +1,9 @@
 # Phase 8 findings
 
-Measured 14 Nov 2026. Phase 8 is open-ended ("premium extras and hardening"); this round delivered
-the pieces below. `node tests/e2e/phase8.ts` runs E2E_COUNT checks in headless Chrome; `npm test`
-runs TEST_COUNT unit and integration tests, 6 of them for the screener and its API.
+Measured 15 Nov 2026. Phase 8 is open-ended ("premium extras and hardening"); this round delivered
+the pieces below. `node tests/e2e/phase8.ts` runs 7 checks in headless Chrome, and every browser
+suite from phase 2 to phase 8 passes in one run (108 of 108 checks); `npm test` runs 323 unit and
+integration tests, 5 of them for the screener and its API.
 
 ## What exists
 
@@ -25,12 +26,23 @@ runs TEST_COUNT unit and integration tests, 6 of them for the screener and its A
   headers; a webhook address rests for a minute after ten wrong passphrases; the server shuts down
   cleanly on SIGINT and SIGTERM (saving the paper account and stopping strategies so they resume).
 
+## Production
+
+`npm run build` builds the app in under two seconds; `npm start` then serves it and the API from one
+process on :8787. Checked: the page, its assets and deep links load; the API answers; paths outside
+the built app are refused (403); every answer carries the security headers. In Chrome, the phase 2 (charts) and phase 5
+(strategy tester) browser suites pass against the production server as they do in development
+(24 of 24 and 19 of 19).
+
 ## Accuracy evidence
 
 - The screener's measures are checked against hand-worked values on a known series (change, moving
   averages, RSI, relative volume, range), and a Pine column computing RSI matches the built-in RSI
   column on every symbol.
-- In the browser, each new chart type paints its own layer and stops when another style is picked.
+- In the browser, each new chart type paints its own layer and stops when another style is picked
+  (Volume candles, High-low and HLC area each cover a few per cent of the plot's pixels; with another
+  style picked, none).
+- The screener sorts symbols A→Z on the first click of the Symbol column and numbers largest first.
 
 ## Not done in this round
 

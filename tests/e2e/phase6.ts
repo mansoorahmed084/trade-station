@@ -149,9 +149,9 @@ try {
     await page.check('[data-testid="ticket-tp-on"]');
     await page.check('[data-testid="ticket-sl-on"]');
     await page.fill('[data-testid="ticket-qty"]', '1');
-    await page.fill('[data-testid="ticket-limit"]', cents(now * 0.9985));
-    await page.fill('[data-testid="ticket-tp"]', cents(now * 1.003));
-    await page.fill('[data-testid="ticket-sl"]', cents(now * 0.996));
+    await page.fill('[data-testid="ticket-limit"]', cents(now * 0.99));
+    await page.fill('[data-testid="ticket-tp"]', cents(now * 1.02));
+    await page.fill('[data-testid="ticket-sl"]', cents(now * 0.96));
     const limitValue = Number(await page.inputValue('[data-testid="ticket-limit"]'));
     await page.click('[data-testid="ticket-submit"]');
     s = await until(store, (x) =>

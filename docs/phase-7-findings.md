@@ -1,6 +1,7 @@
 # Phase 7 findings
 
-Measured 14 Nov 2026. `node tests/e2e/phase7.ts` runs 9 checks in headless Chrome;
+Measured 14–15 Nov 2026. `node tests/e2e/phase7.ts` runs 9 checks in headless Chrome, and every
+browser suite from phase 2 to phase 8 passes in one run (108 of 108 checks);
 `npm test` runs 323 unit and integration tests, 15 of them for automation (5 risk rules, and 10 for
 runners, the kill switch and webhooks through the API); `node tests/soak/automation-soak.ts` runs
 strategies through two simulated weeks of one-minute bars.
@@ -73,6 +74,10 @@ strategies through two simulated weeks of one-minute bars.
 - **Price feeds for symbols without market data** threw; an exchange account can hold coins no
   chart shows. The account now values them on its own.
 - **Toasts piled up** over the panels during busy moments; at most three show at once.
+- **The browser suite left strategies running.** Its clean-up sent requests with a JSON content type
+  and no body, which the server refuses, so runners, webhooks and scripts from earlier runs stayed
+  behind — and a leftover strategy kept trading the paper account under later suites. Fixed in the
+  suite; the server state was cleaned.
 - **The soak found two more.** Paper orders filled at a price two simulated weeks old: the stale-price
   check trusted the data service's last price, which was itself stale. Stream prices now carry the
   time they were seen and count only while recent. And the built-in backtester recorded a position
