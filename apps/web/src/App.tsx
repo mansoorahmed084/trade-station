@@ -13,6 +13,7 @@ import { useAlerts } from './lib/alerts-store.ts';
 import { bindAutomation, useAutomation } from './lib/automation-store.ts';
 import { getChartLines, getChartMarkers, lineBoxes } from './lib/chart-lines.ts';
 import { ServerClient } from './lib/client.ts';
+import { bindFootprints } from './lib/footprint-feed.ts';
 import { useParams } from './lib/params.ts';
 import { useUi } from './lib/store.ts';
 import { useTester } from './lib/tester-store.ts';
@@ -70,6 +71,8 @@ export function App() {
     useEffect(() => bindTrading(client), [client]);
     useEffect(() => bindAutomation(client), [client]);
     useEffect(() => (workspace ? bindTradingLines(workspace) : undefined), [workspace]);
+    // Footprints for charts set to that style.
+    useEffect(() => (workspace ? bindFootprints(workspace, client) : undefined), [workspace, client]);
 
     useEffect(() => {
         (window as any).__ts = {

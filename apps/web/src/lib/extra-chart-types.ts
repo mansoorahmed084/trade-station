@@ -1,5 +1,5 @@
 import { registerChartType, registerRendererLayer } from '@luxalgo/vela/plugin';
-import { niceStep, type TpoSession, tpoProfiles } from '@ts/core';
+import { type FootprintBar, niceStep, type TpoSession, tpoProfiles } from '@ts/core';
 
 /**
  * Chart types the engine does not draw itself: Volume candles, HLC area, High-low and TPO. Each is
@@ -115,6 +115,100 @@ const paintTpo: Painter = (ctx, args) => {
     }
 };
 
+/** What the footprint feed pushes to the footprint layer. */
+export interface FootprintData {
+    rowSize: number;
+    byTime: Record<number, FootprintBar>;
+    note?: string;
+}
+
+const volumeText = (v: number) =>
+    v >= 1e6
+        ? `${(v / 1e6).toFixed(1)}M`
+        : v >= 1e4
+          ? `${(v / 1e3).toFixed(1)}K`
+          : v >= 100
+            ? v.toFixed(0)
+            : v >= 10
+              ? v.toFixed(1)
+              : v.toFixed(2);
+
+/**
+ * Volume footprint: each bar as a column of price levels with the volume sold at the bid and bought
+ * at the ask ("sell × buy"), shaded by which side dominated; a heat column when there is no room for
+ * numbers; the busiest level outlined and the bar's delta underneath.
+ */
+const paintFootprint: Painter = (ctx, args, from, to) => {
+    const data = args.data as FootprintData | undefined;
+    const bars = args.bars as { time: number; open: number; high: number; low: number; close: number }[];
+    ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+    const note = !data?.byTime ? 'Loading footprints…' : data.note;
+    if (note) {
+        ctx.fillStyle = '#7d8590';
+        ctx.fillText(note, 12, args.bounds.top + 40);
+    }
+    const byTime = data?.byTime ?? {};
+    const y = (p: number) => args.coords.priceToY(p, args.scale, args.bounds);
+    const row = data?.rowSize ?? 1;
+    const rowPx = Math.abs(y(0) - y(row));
+    const colW = Math.max(2, args.coords.pxPerBar() * 0.92);
+    let most = 0;
+    for (let i = from; i <= to; i++) {
+        const fp = byTime[bars[i].time];
+        if (fp) for (const l of fp.levels) most = Math.max(most, l.buy + l.sell);
+    }
+    const numbers = colW >= 64 && rowPx >= 11;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    for (let i = from; i <= to; i++) {
+        const b = bars[i];
+        const x = args.coords.timeToX(b.time);
+        const left = x - colW / 2;
+        const up = b.close >= b.open;
+        // A slim candle down the column's left edge.
+        ctx.strokeStyle = up ? UP : DOWN;
+        ctx.fillStyle = up ? UP : DOWN;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(left + 2) + 0.5, y(b.high));
+        ctx.lineTo(Math.round(left + 2) + 0.5, y(b.low));
+        ctx.stroke();
+        const bodyTop = y(Math.max(b.open, b.close));
+        ctx.fillRect(left + 1, bodyTop, 3, Math.max(1, y(Math.min(b.open, b.close)) - bodyTop));
+        const fp = byTime[b.time];
+        if (!fp) continue;
+        const cellLeft = left + 6;
+        const cellW = colW - 7;
+        for (const l of fp.levels) {
+            const top = y(l.price + row);
+            const total = l.buy + l.sell;
+            const buyShare = total > 0 ? l.buy / total : 0.5;
+            // Shading carries the information when there is no room for numbers: make it stronger then.
+            const strength = most > 0 ? (numbers ? 0.12 : 0.3) + (numbers ? 0.6 : 0.7) * (total / most) : 0.2;
+            ctx.fillStyle =
+                buyShare >= 0.5
+                    ? `rgba(38, 166, 154, ${strength * (buyShare - 0.5) * 2 + 0.08})`
+                    : `rgba(239, 83, 80, ${strength * (0.5 - buyShare) * 2 + 0.08})`;
+            ctx.fillRect(cellLeft, top, cellW, Math.max(1, rowPx - (rowPx > 4 ? 1 : 0)));
+            if (numbers) {
+                ctx.font = `${Math.min(11, Math.floor(rowPx) - 1)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+                ctx.fillStyle = '#d0d7de';
+                ctx.fillText(`${volumeText(l.sell)} × ${volumeText(l.buy)}`, cellLeft + cellW / 2, top + rowPx / 2);
+            }
+        }
+        if (Number.isFinite(fp.poc)) {
+            ctx.strokeStyle = '#e3b341';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(cellLeft + 0.5, y(fp.poc + row) + 0.5, cellW - 1, Math.max(1, rowPx - 1));
+        }
+        if (colW >= 34) {
+            ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+            ctx.fillStyle = fp.delta >= 0 ? UP : DOWN;
+            ctx.fillText(`${fp.delta >= 0 ? '+' : '−'}${volumeText(Math.abs(fp.delta))}`, x, y(b.low) + 10);
+        }
+    }
+    ctx.textAlign = 'start';
+};
+
 const TYPES: { id: string; label: string; icon: string; needsVolume?: boolean; paint: Painter }[] = [
     {
         id: 'volumecandles',
@@ -204,6 +298,13 @@ const TYPES: { id: string; label: string; icon: string; needsVolume?: boolean; p
                 ctx.fillRect(x - w / 2, top, w, Math.max(1, bottom - top));
             }
         },
+    },
+    {
+        id: 'footprint',
+        label: 'Volume footprint',
+        icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M2 2v12"/><rect x="5" y="2" width="9" height="3"/><rect x="5" y="6.5" width="9" height="3" fill="currentColor" fill-opacity=".4"/><rect x="5" y="11" width="9" height="3"/></svg>',
+        needsVolume: true,
+        paint: paintFootprint,
     },
     {
         id: 'tpo',
