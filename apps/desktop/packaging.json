@@ -18,5 +18,18 @@
         "entitlements": "build-resources/hardened-runtime.plist",
         "entitlementsInherit": "build-resources/hardened-runtime.plist"
     },
-    "dmg": { "title": "Trade Station" }
+    "dmg": { "title": "Trade Station" },
+    "win": {
+        "icon": "build-resources/icon.png",
+        "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+        "oneClick": false,
+        "perMachine": false,
+        "allowToChangeInstallationDirectory": true,
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "shortcutName": "Trade Station",
+        "artifactName": "Trade Station Setup ${version}.${ext}"
+    }
 }
