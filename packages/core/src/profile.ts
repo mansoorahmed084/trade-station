@@ -156,3 +156,83 @@ export function tpoProfiles(bars: readonly ProfileBar[], options: TpoOptions): T
     }
     return out;
 }
+
+export interface FootprintLevel {
+    /** Bottom of the level's price band, `[price, price + rowSize)`. */
+    price: number;
+    /** Volume bought by aggressive buyers (at the ask) and sold by aggressive sellers (at the bid). */
+    buy: number;
+    sell: number;
+}
+
+export interface FootprintBar {
+    time: number;
+    /** Lowest price first. */
+    levels: FootprintLevel[];
+    buy: number;
+    sell: number;
+    /** Buy volume less sell volume. */
+    delta: number;
+    /** The level with the most volume. */
+    poc: number;
+    trades: number;
+}
+
+/**
+ * Volume footprints: each bar's trades split by price level and by the aggressor's side.
+ * `barTimes` are the bars' open times (ascending); a trade belongs to the last bar that opened at
+ * or before it, up to `barMs` after that bar's open.
+ */
+export function footprints(
+    barTimes: readonly number[],
+    barMs: number,
+    trades: readonly { time: number; price: number; size: number; side?: 'buy' | 'sell' }[],
+    rowSize: number,
+): FootprintBar[] {
+    if (!(rowSize > 0)) throw new Error('the row size must be above zero');
+    const out: FootprintBar[] = barTimes.map((time) => ({
+        time,
+        levels: [],
+        buy: 0,
+        sell: 0,
+        delta: 0,
+        poc: Number.NaN,
+        trades: 0,
+    }));
+    const cells = barTimes.map(() => new Map<number, FootprintLevel>());
+    let i = 0;
+    for (const t of trades) {
+        while (i < barTimes.length - 1 && t.time >= barTimes[i + 1]) i++;
+        if (t.time < barTimes[i] || t.time >= barTimes[i] + barMs) continue;
+        const k = Math.floor(t.price / rowSize + 1e-9);
+        let level = cells[i].get(k);
+        if (!level) {
+            level = { price: Number((k * rowSize).toPrecision(12)), buy: 0, sell: 0 };
+            cells[i].set(k, level);
+        }
+        if (t.side === 'sell') level.sell += t.size;
+        else level.buy += t.size;
+        out[i].trades++;
+    }
+    for (let b = 0; b < out.length; b++) {
+        const levels = [...cells[b].values()].sort((x, y) => x.price - y.price);
+        let best = Number.NaN;
+        let most = -1;
+        for (const l of levels) {
+            l.buy = Number(l.buy.toPrecision(12));
+            l.sell = Number(l.sell.toPrecision(12));
+            out[b].buy += l.buy;
+            out[b].sell += l.sell;
+            if (l.buy + l.sell > most) {
+                most = l.buy + l.sell;
+                best = l.price;
+            }
+        }
+        out[b].levels = levels;
+        out[b].buy = Number(out[b].buy.toPrecision(12));
+        out[b].sell = Number(out[b].sell.toPrecision(12));
+        out[b].delta = Number((out[b].buy - out[b].sell).toPrecision(12));
+        out[b].poc = best;
+    }
+    return out;
+}

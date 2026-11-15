@@ -31,6 +31,22 @@ function fakeVenue(opts: { blockFirstHost?: boolean } = {}) {
                 ],
             });
         }
+        if (url.pathname === '/api/v3/aggTrades') {
+            // 2,500 trades, one every 2 s from T0, ids 1…2500; every third one sold by the taker.
+            const all = Array.from({ length: 2500 }, (_, i) => ({
+                a: i + 1,
+                p: (100 + i * 0.01).toFixed(2),
+                q: '0.5',
+                T: T0 + i * 2000,
+                m: i % 3 === 0,
+            }));
+            const p = url.searchParams;
+            const lim = Number(p.get('limit'));
+            const rows = p.has('fromId')
+                ? all.filter((r) => r.a >= Number(p.get('fromId')))
+                : all.filter((r) => r.T >= Number(p.get('startTime')) && r.T <= Number(p.get('endTime')));
+            return Response.json(rows.slice(0, lim));
+        }
         if (url.pathname === '/api/v3/depth') {
             const n = Number(url.searchParams.get('limit'));
             const rows = (from: number, dir: number) =>
@@ -140,6 +156,26 @@ describe('BinanceAdapter REST', () => {
                 session: '24x7',
             },
         ]);
+        adapter.close();
+    });
+
+    it('reads every aggregate trade in a range, an hour at a time and page by page', async () => {
+        const venue = fakeVenue();
+        const adapter = new BinanceAdapter({ fetch: venue.fetchFn, restHosts: ['https://one.test'] });
+        // 90 minutes: two windows. The first hour holds 1,800 trades (two pages); the stand-in has
+        // 2,500 in all, so the second window ends with the last of them.
+        const { trades, truncated } = await adapter.getTrades('BTCUSDT', T0, T0 + 90 * 60_000, 1e6);
+        expect(truncated).toBe(false);
+        expect(trades).toHaveLength(2500);
+        expect(trades[0]).toEqual({ time: T0, price: 100, size: 0.5, side: 'sell' });
+        expect(trades[1].side).toBe('buy');
+        expect(trades.every((t, i) => i === 0 || t.time > trades[i - 1].time)).toBe(true);
+        expect(
+            venue.calls.filter((u) => u.pathname === '/api/v3/aggTrades' && u.searchParams.has('fromId')).length,
+        ).toBeGreaterThan(0);
+        const capped = await adapter.getTrades('BTCUSDT', T0, T0 + 90 * 60_000, 1500);
+        expect(capped.truncated).toBe(true);
+        expect(capped.trades.length).toBeLessThanOrEqual(1500);
         adapter.close();
     });
 

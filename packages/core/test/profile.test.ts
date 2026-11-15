@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { niceStep, tpoLetter, tpoProfiles } from '../src/profile.ts';
+import { footprints, niceStep, tpoLetter, tpoProfiles } from '../src/profile.ts';
 
 const H = 3_600_000;
 const M30 = 30 * 60_000;
@@ -61,5 +61,25 @@ describe('TPO profiles', () => {
         ]);
         expect([niceStep(0.37), niceStep(3), niceStep(13), niceStep(240)]).toEqual([0.5, 5, 20, 250]);
         expect(() => tpoProfiles([bar(T0, 1, 2)], { rowSize: 0 })).toThrow(/row size/);
+    });
+});
+
+describe('volume footprints', () => {
+    it('splits each bar’s trades by level and by side, with delta and the busiest level', () => {
+        const M = 60_000;
+        const trades = [
+            { time: 0, price: 100.04, size: 1, side: 'buy' as const },
+            { time: 10, price: 100.11, size: 2, side: 'buy' as const },
+            { time: 20, price: 100.12, size: 0.5, side: 'sell' as const },
+            { time: M + 5, price: 99.95, size: 3, side: 'sell' as const },
+            { time: 3 * M, price: 99, size: 9, side: 'buy' as const }, // after the last bar closed
+        ];
+        const [a, b] = footprints([0, M], M, trades, 0.1);
+        expect(a.levels).toEqual([
+            { price: 100, buy: 1, sell: 0 },
+            { price: 100.1, buy: 2, sell: 0.5 },
+        ]);
+        expect(a).toMatchObject({ buy: 3, sell: 0.5, delta: 2.5, poc: 100.1, trades: 3 });
+        expect(b).toMatchObject({ buy: 0, sell: 3, delta: -3, poc: 99.9, trades: 1 });
     });
 });

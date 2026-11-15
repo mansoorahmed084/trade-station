@@ -78,6 +78,66 @@ export class BinanceAdapter implements MarketDataAdapter {
         this.WS = opts.WebSocket ?? WebSocket;
     }
 
+    /**
+     * Public aggregate trades in `[from, to)`, oldest first. Binance answers at most 1,000 per
+     * request and a time window of at most an hour, so the range is cut into windows fetched a few at
+     * a time, each continued by trade id until it is complete.
+     */
+    async getTrades(
+        ticker: string,
+        from: number,
+        to: number,
+        limit: number,
+    ): Promise<{ trades: Tick[]; truncated: boolean }> {
+        const HOUR = 3_600_000;
+        const windows: [number, number][] = [];
+        for (let a = from; a < to; a += HOUR) windows.push([a, Math.min(to, a + HOUR)]);
+        const pages: Tick[][] = new Array(windows.length);
+        let total = 0;
+        let truncated = false;
+        const fetchWindow = async (w: number) => {
+            const [a, b] = windows[w];
+            const out: Tick[] = [];
+            let rows: any[] = await this.rest('/api/v3/aggTrades', {
+                symbol: ticker,
+                startTime: a,
+                endTime: b - 1,
+                limit: 1000,
+            });
+            for (;;) {
+                for (const r of rows) {
+                    if (r.T >= b) break;
+                    out.push({ time: r.T, price: Number(r.p), size: Number(r.q), side: r.m ? 'sell' : 'buy' });
+                }
+                total += rows.length;
+                if (rows.length < 1000 || rows[rows.length - 1].T >= b - 1) break;
+                if (total >= limit) {
+                    truncated = true;
+                    break;
+                }
+                rows = await this.rest('/api/v3/aggTrades', {
+                    symbol: ticker,
+                    fromId: rows[rows.length - 1].a + 1,
+                    limit: 1000,
+                });
+            }
+            pages[w] = out;
+        };
+        for (let i = 0; i < windows.length; i += 4) {
+            if (total >= limit) {
+                truncated = true;
+                break;
+            }
+            await Promise.all(windows.slice(i, i + 4).map((_, k) => fetchWindow(i + k)));
+        }
+        const trades = pages.filter(Boolean).flat();
+        if (trades.length > limit) {
+            truncated = true;
+            trades.length = limit;
+        }
+        return { trades, truncated };
+    }
+
     /** The public order book (no account needed). */
     async getDepth(ticker: string, levels: number): Promise<Depth> {
         const limit = [5, 10, 20, 50, 100, 500, 1000].find((n) => n >= levels) ?? 1000;

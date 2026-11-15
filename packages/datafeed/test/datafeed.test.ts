@@ -231,6 +231,52 @@ describe('MarketDataService on the synthetic venue', () => {
     });
 });
 
+describe('trades and footprints', () => {
+    it('makes up each synthetic bar from trades that add up to its volume, inside its range', async () => {
+        const adapter = new SyntheticAdapter({ genesis: GENESIS, now: () => GENESIS + 600 * MIN });
+        const { trades } = await adapter.getTrades('ALPHA', GENESIS + 100 * MIN, GENESIS + 103 * MIN, 1e6);
+        const bars = await adapter.getBars('ALPHA', '1', { from: GENESIS + 100 * MIN, to: GENESIS + 102 * MIN });
+        expect(bars).toHaveLength(3);
+        for (const bar of bars) {
+            const own = trades.filter((t) => t.time >= bar.time && t.time < bar.time + MIN);
+            expect(own.length).toBeGreaterThanOrEqual(20);
+            expect(own.reduce((a, t) => a + t.size, 0)).toBeCloseTo(bar.volume, 6);
+            expect(own.every((t) => t.price >= bar.low - 1e-9 && t.price <= bar.high + 1e-9)).toBe(true);
+            expect(own[0].price).toBeCloseTo(bar.open, 6);
+            expect(own.at(-1)!.price).toBeCloseTo(bar.close, 6);
+        }
+        // The same bars give the same trades.
+        const again = await adapter.getTrades('ALPHA', GENESIS + 100 * MIN, GENESIS + 103 * MIN, 1e6);
+        expect(again.trades).toEqual(trades);
+        expect((await adapter.getTrades('ALPHA', GENESIS, GENESIS + 600 * MIN, 50)).truncated).toBe(true);
+    });
+
+    it('builds footprints whose volume matches the bars, and fetches only what is new', async () => {
+        let now = GENESIS + 2000 * MIN + 30_000;
+        const adapter = new SyntheticAdapter({ genesis: GENESIS, now: () => now });
+        const service = new MarketDataService({ adapters: [adapter], store: new BarStore(dir), now: () => now });
+        await service.init();
+        const spy = vi.spyOn(adapter, 'getTrades');
+        const fp = await service.footprint('SYNTH:ALPHA', '5', { bars: 12 });
+        const bars = await service.getBars('SYNTH:ALPHA', '5', { limit: 12 });
+        expect(fp.bars.map((b) => b.time)).toEqual(Array.from(bars.time.subarray(0, 12)));
+        for (let i = 0; i < 11; i++) {
+            const b = fp.bars[i];
+            expect(b.buy + b.sell).toBeCloseTo(bars.volume[i], 4);
+            expect(b.delta).toBeCloseTo(b.buy - b.sell, 9);
+            expect(b.levels[0].price).toBeGreaterThanOrEqual(Math.floor(bars.low[i] / fp.rowSize) * fp.rowSize - 1e-9);
+        }
+        expect(fp.rowSize).toBeGreaterThan(0);
+        expect(spy).toHaveBeenCalledTimes(1);
+        // A minute later only the bar still forming is read again.
+        now += MIN;
+        await service.footprint('SYNTH:ALPHA', '5', { bars: 12, rowSize: fp.rowSize });
+        expect(spy).toHaveBeenCalledTimes(2);
+        expect(spy.mock.calls[1][1]).toBe(bars.time[11]);
+        service.close();
+    });
+});
+
 describe('deep downloads', () => {
     it('fill older history around stored bars in a few large writes, storing exactly what a fresh load does', async () => {
         vi.useFakeTimers();

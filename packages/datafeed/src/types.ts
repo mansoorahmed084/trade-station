@@ -27,6 +27,16 @@ export interface MarketDataAdapter {
     subscribeBars(ticker: string, timeframe: string, onBar: (bar: Bar, eventTime: number) => void): Unsubscribe;
     /** Live trade prints, when the venue has them. */
     subscribeTrades?(ticker: string, onTick: (tick: Tick) => void): Unsubscribe;
+    /**
+     * Every trade printed in `[from, to)`, oldest first, with the aggressor's side. At most
+     * `limit`; the answer says when there were more.
+     */
+    getTrades?(
+        ticker: string,
+        from: number,
+        to: number,
+        limit: number,
+    ): Promise<{ trades: Tick[]; truncated: boolean }>;
     /** The order book's best levels, when the venue publishes it. */
     getDepth?(ticker: string, levels: number): Promise<Depth>;
     /** Fires after the upstream connection dropped and came back: subscribers may have missed data. */

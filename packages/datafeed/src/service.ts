@@ -8,7 +8,10 @@ import {
     barOpenTime,
     canAggregate,
     Emitter,
+    type FootprintBar,
+    footprints,
     LiveAggregator,
+    niceStep,
     normalizeTimeframe,
     type SymbolInfo,
     splitSymbol,
@@ -66,6 +69,9 @@ export class MarketDataService {
     private adapters = new Map<string, MarketDataAdapter>();
     private symbols = new Map<string, SymbolInfo>();
     private depthCache = new Map<string, { at: number; book: Promise<Depth> }>();
+    /** Footprints of closed bars, by symbol, timeframe, row size and bar. */
+    private footprints = new Map<string, FootprintBar>();
+    private forming = new Map<string, FootprintBar>();
     private byTicker = new Map<string, SymbolInfo>();
     private hubs = new Map<string, Hub>();
     private tradeHubs = new Map<string, { listeners: Set<(t: Tick) => void>; stop: Unsubscribe; last: Tick | null }>();
@@ -545,6 +551,57 @@ export class MarketDataService {
         book.catch(() => this.depthCache.delete(key));
         if (this.depthCache.size > 200) this.depthCache.delete(this.depthCache.keys().next().value!);
         return book;
+    }
+
+    /**
+     * Volume footprints of the newest `bars` bars up to `to` (default 60, at most 300): buy and sell
+     * volume per price level, from the venue's trades. Closed bars are kept, so a later call only
+     * fetches the trades of bars it has not seen and of the bar still forming.
+     */
+    async footprint(
+        symbol: string,
+        timeframe: string,
+        q: { bars?: number; to?: number; rowSize?: number } = {},
+    ): Promise<{ symbol: string; timeframe: string; rowSize: number; bars: FootprintBar[]; truncated: boolean }> {
+        const info = this.underlying(symbol);
+        const { adapter } = this.resolve(info.symbol);
+        if (!adapter.getTrades)
+            throw Object.assign(new Error(`${adapter.name} publishes no trade history`), { statusCode: 404 });
+        const tf = normalizeTimeframe(timeframe);
+        const ms = timeframeMs(tf);
+        const count = Math.min(300, Math.max(1, Math.round(q.bars ?? 60)));
+        const series = await this.getBars(info.symbol, tf, { limit: count, to: q.to });
+        const n = series.length;
+        if (n === 0) return { symbol: info.symbol, timeframe: tf, rowSize: info.tickSize, bars: [], truncated: false };
+        // Rows: about a dozen per typical bar, on a round step no finer than the tick.
+        let row = q.rowSize;
+        if (!(row! > 0)) {
+            const ranges = Array.from({ length: n }, (_, i) => series.high[i] - series.low[i]).sort((a, b) => a - b);
+            const raw = niceStep(Math.max(ranges[Math.floor(n / 2)] / 12, info.tickSize));
+            row = Number((Math.max(1, Math.round(raw / info.tickSize)) * info.tickSize).toPrecision(12));
+        }
+        const now = this.now();
+        const times = Array.from(series.time.subarray(0, n));
+        const key = (t: number) => `${info.symbol}|${tf}|${row}|${t}`;
+        // Bars still to read: those not kept, and the one still forming.
+        const missing = times.findIndex((t) => !this.footprints.has(key(t)) || t + ms > now);
+        let truncated = false;
+        if (missing >= 0) {
+            const from = times[missing];
+            const result = await adapter.getTrades(info.ticker, from, Math.min(now, times[n - 1] + ms), 400_000);
+            truncated = result.truncated;
+            const fresh = footprints(times.slice(missing), ms, result.trades, row!);
+            for (const fp of fresh) {
+                // Only closed bars are kept; and not when the trades were cut short.
+                if (fp.time + ms <= now && !truncated) this.footprints.set(key(fp.time), fp);
+                else this.footprints.delete(key(fp.time));
+                this.forming.set(key(fp.time), fp);
+            }
+            while (this.footprints.size > 20_000) this.footprints.delete(this.footprints.keys().next().value!);
+        }
+        const bars = times.map((t) => this.footprints.get(key(t)) ?? this.forming.get(key(t))!);
+        this.forming.clear();
+        return { symbol: info.symbol, timeframe: tf, rowSize: row!, bars, truncated };
     }
 
     /** The most recent price seen on a live stream of the symbol and when it was seen (venue time). */

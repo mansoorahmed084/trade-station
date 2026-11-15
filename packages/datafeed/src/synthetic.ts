@@ -197,6 +197,73 @@ export class SyntheticAdapter implements MarketDataAdapter {
     }
 
     /**
+     * The trades that make up each one-minute bar: they walk the bar's path (open, nearer extreme,
+     * farther extreme, close), their sizes add up to the bar's volume, and the side follows the
+     * price (an up-tick is a buy, mostly). The same bar always gives the same trades.
+     */
+    async getTrades(
+        ticker: string,
+        from: number,
+        to: number,
+        limit: number,
+    ): Promise<{ trades: Tick[]; truncated: boolean }> {
+        const now = this.now();
+        const spec = this.state(ticker).spec;
+        const trades: Tick[] = [];
+        const first = Math.max(0, Math.floor((from - this.genesis) / MIN));
+        const last = Math.floor((Math.min(to, now) - 1 - this.genesis) / MIN);
+        for (let i = first; i <= last; i++) {
+            const bar = this.barAt(ticker, i);
+            const formingNow = barOpenTime(now, '1') === bar.time;
+            for (const t of this.barTrades(bar, spec, ticker.length * 7919 + i)) {
+                if (t.time < from || t.time >= to || (formingNow && t.time > now)) continue;
+                if (trades.length >= limit) return { trades, truncated: true };
+                trades.push(t);
+            }
+        }
+        return { trades, truncated: false };
+    }
+
+    private barTrades(bar: Bar, spec: Spec, seed: number): Tick[] {
+        const rnd = seededRandom(seed >>> 0);
+        const n = 20 + Math.floor(rnd() * 40);
+        const upFirst = bar.high - bar.open <= bar.open - bar.low;
+        const pts = upFirst ? [bar.open, bar.high, bar.low, bar.close] : [bar.open, bar.low, bar.high, bar.close];
+        const legs = [Math.abs(pts[1] - pts[0]), Math.abs(pts[2] - pts[1]), Math.abs(pts[3] - pts[2])];
+        const total = legs[0] + legs[1] + legs[2] || 1;
+        const snap = (p: number) => Number((Math.round(p / spec.tickSize) * spec.tickSize).toFixed(8));
+        // Sizes: random shares of the bar's volume, the last taking what is left so they add up exactly.
+        const weights = Array.from({ length: n }, () => 0.2 + rnd());
+        const sum = weights.reduce((a, w) => a + w, 0);
+        const decimals = 3;
+        let left = bar.volume;
+        const out: Tick[] = [];
+        let prev = bar.open;
+        for (let k = 0; k < n; k++) {
+            // Position along the path, from the open (k = 0) to the close (k = n − 1).
+            let dist = (k / (n - 1)) * total;
+            let price = pts[0];
+            for (let leg = 0; leg < 3; leg++) {
+                const step = Math.min(dist, legs[leg]);
+                price = pts[leg] + Math.sign(pts[leg + 1] - pts[leg]) * step;
+                dist -= step;
+                if (dist <= 0) break;
+            }
+            price = snap(Math.min(bar.high, Math.max(bar.low, price)));
+            const size =
+                k === n - 1
+                    ? Number(left.toFixed(decimals))
+                    : Number(((bar.volume * weights[k]) / sum).toFixed(decimals));
+            left -= size;
+            const tickRule = price > prev ? 'buy' : price < prev ? 'sell' : rnd() < 0.5 ? 'buy' : 'sell';
+            const side = rnd() < 0.2 ? (tickRule === 'buy' ? 'sell' : 'buy') : tickRule;
+            out.push({ time: bar.time + Math.floor((k / n) * MIN), price, size, side });
+            prev = price;
+        }
+        return out;
+    }
+
+    /**
      * A made-up book around the current price: sizes grow away from the touch and change every
      * couple of seconds, so a depth ladder has something plausible to show.
      */

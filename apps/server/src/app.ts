@@ -199,6 +199,17 @@ export async function createApp(config: Config, overrides: AppOverrides = {}): P
         return data.depth(String(q.symbol ?? ''), q.levels === undefined ? 20 : Number(q.levels));
     });
 
+    /** Volume footprints: `?symbol=&tf=&bars=&to=&row=`. */
+    server.get('/api/footprint', async (req) => {
+        const q = req.query as Record<string, string | undefined>;
+        const num = (v: string | undefined) => (v === undefined || v === '' ? undefined : Number(v));
+        return data.footprint(String(q.symbol ?? ''), String(q.tf ?? '1'), {
+            bars: num(q.bars),
+            to: num(q.to),
+            rowSize: num(q.row),
+        });
+    });
+
     server.get('/api/bars', async (req, reply) => {
         const q = req.query as Record<string, string | undefined>;
         const num = (v: string | undefined) => (v === undefined || v === '' ? undefined : Number(v));
