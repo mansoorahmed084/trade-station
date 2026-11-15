@@ -1,8 +1,9 @@
 import { registerChartType, registerRendererLayer } from '@luxalgo/vela/plugin';
+import { niceStep, type TpoSession, tpoProfiles } from '@ts/core';
 
 /**
- * Chart types the engine does not draw itself: Volume candles, HLC area and High-low. Each is a
- * registered price style that turns the base candles off and paints the bars on its own layer.
+ * Chart types the engine does not draw itself: Volume candles, HLC area, High-low and TPO. Each is
+ * a registered price style that turns the base candles off and paints the bars on its own layer.
  */
 
 const UP = '#26a69a';
@@ -22,6 +23,97 @@ function traceWith(ctx: CanvasRenderingContext2D) {
         }
     };
 }
+
+const TPO_PERIOD = 30 * 60_000;
+const TPO_SESSION = 86_400_000;
+/** The last profiles worked out, reused while the bars and the row size stay the same. */
+let tpoCache: { bars: unknown; from: number; to: number; row: number; sessions: TpoSession[] } | null = null;
+
+/**
+ * TPO: one column per (UTC) day, a letter per 30-minute period at every price band it traded,
+ * the point of control and the value area shaded, and the initial balance as a bar on the left.
+ */
+const paintTpo: Painter = (ctx, args) => {
+    const bars = args.bars as { time: number; high: number; low: number; close: number }[];
+    const top = args.bounds.top;
+    const height = args.bounds.height;
+    if (args.coords.barInterval > TPO_PERIOD) {
+        ctx.fillStyle = '#7d8590';
+        ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('TPO needs bars of 30 minutes or less: pick a shorter timeframe.', 12, top + 40);
+        return;
+    }
+    // Rows about 12 px tall, on a round price step.
+    const pricePerPx =
+        Math.abs(
+            args.coords.yToPrice(top, args.scale, args.bounds) -
+                args.coords.yToPrice(top + height, args.scale, args.bounds),
+        ) / height;
+    const row = niceStep(pricePerPx * 12);
+    const view = args.coords.visibleTimeRange();
+    const from = Math.floor(view.from / TPO_SESSION) * TPO_SESSION;
+    const to = view.to;
+    if (!tpoCache || tpoCache.bars !== bars || tpoCache.from !== from || tpoCache.to < to || tpoCache.row !== row) {
+        const inView = bars.filter((b) => b.time >= from && b.time <= to + TPO_SESSION);
+        tpoCache = {
+            bars,
+            from,
+            to: to + TPO_SESSION,
+            row,
+            sessions: tpoProfiles(inView, { rowSize: row, periodMs: TPO_PERIOD, sessionMs: TPO_SESSION }),
+        };
+    }
+    const half = args.coords.pxPerBar() / 2;
+    const y = (p: number) => args.coords.priceToY(p, args.scale, args.bounds);
+    const rowPx = Math.max(1, Math.abs(y(0) - y(row)));
+    ctx.textBaseline = 'middle';
+    for (const s of tpoCache.sessions) {
+        const x0 = args.coords.timeToX(s.start) - half;
+        const x1 = args.coords.timeToX(s.end) - half;
+        if (x1 < 0 || x0 > args.coords.width) continue;
+        // Session divider.
+        ctx.strokeStyle = 'rgba(125, 133, 144, 0.35)';
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x0) + 0.5, top);
+        ctx.lineTo(Math.round(x0) + 0.5, top + height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const widest = s.rows.reduce((m, r) => Math.max(m, r.letters.length), 1);
+        const cw = Math.min(8, Math.max(1, (x1 - x0 - 10) / widest));
+        const text = cw >= 6 && rowPx >= 9;
+        ctx.font = `${Math.min(11, Math.floor(rowPx) - 1)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+        for (const r of s.rows) {
+            const yTop = y(r.price + row);
+            const yMid = yTop + rowPx / 2;
+            const inValue = r.price >= s.val && r.price <= s.vah;
+            const poc = r.price === s.poc;
+            if (poc) {
+                ctx.fillStyle = 'rgba(227, 179, 65, 0.22)';
+                ctx.fillRect(x0 + 6, yTop, x1 - x0 - 8, rowPx);
+            } else if (inValue) {
+                ctx.fillStyle = 'rgba(76, 141, 255, 0.08)';
+                ctx.fillRect(x0 + 6, yTop, x1 - x0 - 8, rowPx);
+            }
+            const color = poc ? '#e3b341' : inValue ? '#d0d7de' : '#7d8590';
+            for (let k = 0; k < r.letters.length; k++) {
+                const x = x0 + 8 + k * cw;
+                if (text) {
+                    ctx.fillStyle = color;
+                    ctx.fillText(r.letters[k], x, yMid);
+                } else {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, yTop + 1, Math.max(1, cw - 1), Math.max(1, rowPx - 2));
+                }
+            }
+        }
+        // Initial balance.
+        if (Number.isFinite(s.ibHigh)) {
+            ctx.fillStyle = '#4c8dff';
+            ctx.fillRect(x0 + 2, y(s.ibHigh), 3, Math.max(1, y(s.ibLow) - y(s.ibHigh)));
+        }
+    }
+};
 
 const TYPES: { id: string; label: string; icon: string; needsVolume?: boolean; paint: Painter }[] = [
     {
@@ -112,6 +204,12 @@ const TYPES: { id: string; label: string; icon: string; needsVolume?: boolean; p
                 ctx.fillRect(x - w / 2, top, w, Math.max(1, bottom - top));
             }
         },
+    },
+    {
+        id: 'tpo',
+        label: 'TPO (market profile)',
+        icon: '<svg viewBox="0 0 16 16" fill="currentColor"><text x="1" y="5" font-size="5" font-family="monospace">AB</text><text x="1" y="10" font-size="5" font-family="monospace">ABCD</text><text x="1" y="15" font-size="5" font-family="monospace">BC</text></svg>',
+        paint: paintTpo,
     },
 ];
 
