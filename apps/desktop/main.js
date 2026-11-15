@@ -8,9 +8,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const serverEntry = join(root, 'apps', 'server', 'src', 'main.ts');
-const webDir = join(root, 'apps', 'web', 'dist');
+// Installed, the bundled server and the built web app sit in the app's resources; run from the
+// project folder, they are the sources and the latest build.
+const packaged = app.isPackaged;
+const root = packaged ? process.resourcesPath : join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const serverEntry = packaged ? join(root, 'server', 'main.mjs') : join(root, 'apps', 'server', 'src', 'main.ts');
+const webDir = packaged ? join(root, 'web') : join(root, 'apps', 'web', 'dist');
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let server = null;

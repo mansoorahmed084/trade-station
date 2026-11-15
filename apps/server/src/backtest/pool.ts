@@ -109,7 +109,7 @@ export class WorkerPool {
     }
 
     private spawn(): void {
-        const worker = new Worker(new URL('./worker.ts', import.meta.url));
+        const worker = new Worker(new URL(WORKER_ENTRY, import.meta.url));
         const slot: Slot = { worker, task: null, ready: false };
         this.slots.push(slot);
         const reply = (message: ToWorker) => worker.postMessage(message);
@@ -167,5 +167,11 @@ export class WorkerPool {
         worker.on('exit', (code) => lost(`exit code ${code}`));
     }
 }
+
+/**
+ * The worker's file, next to this one. A bundled build (the desktop app) replaces this with the
+ * bundled worker's name at build time.
+ */
+const WORKER_ENTRY = process.env.TS_BACKTEST_WORKER ?? './worker.ts';
 
 const cancelled = () => Object.assign(new Error('cancelled'), { statusCode: 499, cancelled: true });

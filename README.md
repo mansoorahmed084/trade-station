@@ -17,6 +17,22 @@ Or as one process with the built app: `npm run build`, then `npm start` and open
 Or as a desktop app: `npm run desktop` (builds the app, then opens it in its own window with the
 server running behind it; its data lives in the app's user-data folder).
 
+### macOS installer
+
+```bash
+npm run package:desktop      # → apps/desktop/dist/Trade Station-<version>-arm64.dmg
+```
+
+The DMG holds a self-contained `Trade Station.app` (the server is bundled inside; no Node or project
+folder needed). Its data lives in `~/Library/Application Support/Trade Station/data`.
+
+Signing: without a certificate the app is signed ad hoc — it runs on the Mac that built it, and other
+Macs warn before opening it (right-click → Open to allow it). To sign it for distribution, install
+your **Developer ID Application** certificate in the keychain (or set `CSC_LINK` and
+`CSC_KEY_PASSWORD`, or `CSC_NAME`), and to notarize it also set `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. The build script picks these up by itself and
+then signs with the hardened runtime and notarizes.
+
 ### Settings (environment variables)
 
 | Variable | What it does |

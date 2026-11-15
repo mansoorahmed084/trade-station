@@ -3,6 +3,7 @@
  * data folder, and checks the trading server starts behind it, the app loads and works, the server
  * stops when the app quits, and the data is still there on the next start.
  * Needs `npm run build` first. Run: node tests/e2e/desktop.ts
+ * The installed app: DESKTOP_APP="apps/desktop/dist/mac-arm64/Trade Station.app/Contents/MacOS/Trade Station" node tests/e2e/desktop.ts
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -15,13 +16,16 @@ const check = (name: string, ok: boolean, detail = '') => {
     results.push({ name, ok });
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` — ${detail}` : ''}`);
 };
-const executablePath = createRequire(import.meta.url)('electron') as string;
+// DESKTOP_APP points at an installed app's executable (…/Trade Station.app/Contents/MacOS/Trade Station);
+// without it, the shell runs from the project folder.
+const installed = process.env.DESKTOP_APP;
+const executablePath = installed ?? (createRequire(import.meta.url)('electron') as string);
 const dataDir = mkdtempSync(join(tmpdir(), 'ts-desktop-'));
 
 async function launch(): Promise<{ app: ElectronApplication; win: Page; base: string; errors: string[] }> {
     const app = await electron.launch({
         executablePath,
-        args: ['apps/desktop'],
+        args: installed ? [] : ['apps/desktop'],
         env: { ...process.env, TS_DATA_DIR: dataDir, TS_PROVIDERS: 'synth' },
         timeout: 60_000,
     });

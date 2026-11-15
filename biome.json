@@ -9,6 +9,7 @@
             "*.ts",
             "*.json",
             "!**/dist",
+            "!apps/desktop/build",
             "!**/node_modules"
         ]
     },

@@ -12,3 +12,6 @@ coverage/
 
 # screenshots written by the end-to-end suites
 tests/e2e/*.png
+
+# desktop app build output
+apps/desktop/build/

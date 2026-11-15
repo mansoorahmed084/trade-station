@@ -1,0 +1,22 @@
+{
+    "appId": "local.tradestation.desktop",
+    "productName": "Trade Station",
+    "copyright": "Trade Station",
+    "directories": { "output": "dist", "buildResources": "build-resources" },
+    "files": ["main.js", "package.json"],
+    "extraResources": [
+        { "from": "build/server", "to": "server" },
+        { "from": "../web/dist", "to": "web", "filter": ["**/*", "!**/*.map", "!bench.html"] }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "mac": {
+        "category": "public.app-category.finance",
+        "icon": "build-resources/icon.icns",
+        "target": [{ "target": "dmg", "arch": ["arm64"] }],
+        "hardenedRuntime": true,
+        "entitlements": "build-resources/hardened-runtime.plist",
+        "entitlementsInherit": "build-resources/hardened-runtime.plist"
+    },
+    "dmg": { "title": "Trade Station" }
+}

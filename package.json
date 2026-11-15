@@ -21,7 +21,8 @@
         "test": "vitest run",
         "bench": "node tests/bench/run.ts",
         "lint": "biome check .",
-        "desktop": "npm run build && npm start -w @ts/desktop"
+        "desktop": "npm run build && npm start -w @ts/desktop",
+        "package:desktop": "node scripts/package-desktop.mjs"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.6.7",
@@ -31,6 +32,7 @@
         "vitest": "^5.1.0"
     },
     "allowScripts": {
-        "electron@45.2.1": true
+        "electron@45.2.1": true,
+        "electron-winstaller": false
     }
 }

@@ -23,8 +23,20 @@ footprints and the desktop app. Every browser suite from phase 2 to phase 8 pass
 - **Desktop app** (`npm run desktop`, Electron 45.2.1): starts the trading server on Electron's own
   Node (24.22, which has everything the server needs) on a free local port, keeps its data in the
   app's user-data folder, opens the built app in a window, opens outside links in the browser, allows
-  one copy at a time, and stops the server gracefully on quit. Checked by launching it (`tests/e2e/desktop.ts`): the server starts behind it, the chart works in the window, a paper order fills, quitting stops the server, and the next start finds the position kept in its data folder. Not packaged as an
-  installer yet: it runs from the project folder.
+  one copy at a time, and stops the server gracefully on quit. Checked by
+  launching it (`tests/e2e/desktop.ts`): the server starts behind it, the chart works in the window, a
+  paper order fills, quitting stops the server, and the next start finds the position kept in its
+  data folder.
+- **macOS installer** (`npm run package:desktop`, electron-builder 26.18.1): the server and its
+  backtest worker are bundled into plain JavaScript with Rolldown (4.3 MB, every dependency included,
+  runs without `node_modules`); the built web app goes in beside it; the result is
+  `Trade Station.app` (283 MB) in a 125 MB DMG with the usual drag-to-Applications window and an
+  original icon. The desktop check passes 6/6 against the installed app (`DESKTOP_APP=… node
+  tests/e2e/desktop.ts`): its own server starts, the chart draws, a paper order fills, no page errors,
+  quitting stops the server and the position is still there on the next start. It is signed ad hoc
+  because no Developer ID certificate is installed here; the build signs with one (hardened runtime) and notarizes as soon as a certificate and Apple
+  ID settings are present — see the README. Only Electron's own install script may run during
+  `npm install` (electron-builder's Windows helper is denied).
 - **Found and fixed**: a Pine strategy's position still open at the end of a backtest was reported
   with a result of zero (the built-in engine marks it to the last close); and lint errors had been
   missed because they were checked through `tail`, which hid them — lint now runs in CI and passes.
@@ -71,7 +83,8 @@ the built app are refused (403); every answer carries the security headers. In C
 ## Not done yet
 
 - **Session and anchored volume profiles** (the visible-range profile comes from the chart engine).
-- **An installer** for the desktop app (code signing, auto-update).
+- **A distribution signature and notarization** for the installer: they need the owner's Apple
+  Developer ID certificate and Apple ID. Auto-update and Intel (x64) builds are not set up.
 - **Heatmaps, news, economic and earnings calendars, fundamentals, portfolios**: they need data
   sources this project does not have.
 - **Auto chart patterns**.
