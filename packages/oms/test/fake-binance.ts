@@ -121,7 +121,7 @@ export class FakeBinance {
 
     // ── HTTP ────────────────────────────────────────────────────────────────
 
-    private http(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): void {
+    private http(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): unknown {
         const url = new URL(req.url ?? '/', 'http://x');
         const params = Object.fromEntries(url.searchParams);
         const send = (status: number, body: unknown) => {
@@ -273,7 +273,7 @@ export class FakeBinance {
                             (o.status === 'NEW' || o.status === 'PARTIALLY_FILLED'),
                     );
                     if (legs.length === 0) return send(400, { code: -2011, msg: 'Unknown order list sent.' });
-                    legs.forEach((o, i) => this.cancel(o, i > 0));
+                    for (const [i, o] of legs.entries()) this.cancel(o, i > 0);
                     return send(200, { listClientOrderId: params.listClientOrderId });
                 }
                 default:

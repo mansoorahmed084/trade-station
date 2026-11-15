@@ -236,6 +236,15 @@ export async function execute(job: RunJob, data: ScriptData): Promise<RunOutput>
         warnings.push(w.message);
     }
     const bars = await data.getBars(symbol, tf, window);
+    // A position still open is marked to the last close, net of what its entry cost in commission,
+    // as the built-in engine reports it (the Pine runtime leaves its result at zero).
+    const lastClose = bars.length ? bars.close[bars.length - 1] : undefined;
+    if (lastClose !== undefined) {
+        for (const t of trades) {
+            if (!t.open) continue;
+            t.pnl = (lastClose - t.entryPrice) * t.qty * (t.side === 'long' ? 1 : -1) - t.commission;
+        }
+    }
     const report = buildReport(trades, bars, properties.initialCapital, timeframeMs(tf), periodsPerYear);
     if (job.detail === 'summary') return { summary: summarize(report) };
     return {

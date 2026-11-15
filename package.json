@@ -20,7 +20,8 @@
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "test": "vitest run",
         "bench": "node tests/bench/run.ts",
-        "lint": "biome check ."
+        "lint": "biome check .",
+        "desktop": "npm run build && npm start -w @ts/desktop"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.6.7",
@@ -28,5 +29,8 @@
         "playwright-core": "^1.65.0",
         "typescript": "^7.0.2",
         "vitest": "^5.1.0"
+    },
+    "allowScripts": {
+        "electron@45.2.1": true
     }
 }

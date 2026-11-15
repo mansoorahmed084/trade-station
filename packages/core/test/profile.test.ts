@@ -35,7 +35,7 @@ describe('TPO profiles', () => {
             [102, 102], // D
             [102, 102], // E
         ];
-        ranges.forEach(([lo, hi], i) => bars.push(bar(T0 + i * M30, lo, hi)));
+        for (const [i, [lo, hi]] of ranges.entries()) bars.push(bar(T0 + i * M30, lo, hi));
         const s = tpoProfiles(bars, { rowSize: 1 })[0];
         expect(s.rows.map((r) => r.letters.length)).toEqual([1, 2, 5, 3, 1]);
         expect(s.poc).toBe(102);

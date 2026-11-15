@@ -1,11 +1,35 @@
 # Phase 8 findings
 
-Measured 15 Nov 2026. Phase 8 is open-ended ("premium extras and hardening"); this round delivered
-the pieces below. `node tests/e2e/phase8.ts` runs 7 checks in headless Chrome, and every browser
-suite from phase 2 to phase 8 passes in one run (108 of 108 checks); `npm test` runs 323 unit and
-integration tests, 5 of them for the screener and its API.
+Phase 8 is open-ended ("premium extras and hardening"). Two rounds so far: the first (14–15 Nov
+2026) added three chart types, the screener and hardening; the second (15 Nov) added TPO, volume
+footprints and the desktop app. Every browser suite from phase 2 to phase 8 passes in one run (109 of 109 checks; `tests/e2e/phase8.ts` has 8), and the desktop app's own check passes (6 of 6); `npm test` runs 331 unit and integration tests.
 
-## What exists
+## Round 2
+
+- **TPO (market profile)** as a chart type: one column per UTC day, a letter for every 30-minute
+  period at every price band it traded (A–Z, then a–z), the point of control (the band with the
+  most letters) in amber, the value area (70 % of letters, grown outwards from the point of control,
+  each step taking the busier side) shaded, and the initial balance (the first hour) as a bar. Row
+  size follows the zoom; on bars longer than 30 minutes it says to pick a shorter timeframe.
+- **Volume footprint** as a chart type: each bar a column of price levels with the volume bought at
+  the ask and sold at the bid, "sell × buy" when zoomed in and a heat column otherwise, shaded by the
+  side that dominated, the busiest level outlined and the bar's delta underneath. Picking it zooms to
+  about 30 bars. It runs on live Binance trades as well as the synthetic market.
+- **Trade history**: adapters return every trade with its aggressor side — Binance's public aggregate
+  trades (an hour per window, page by page, a few windows at once), and synthetic trades that walk
+  each bar's path and add up exactly to its volume. `GET /api/footprint` builds footprints with an
+  automatic row size and keeps closed bars, so later calls only read new trades; 40 one-minute bars
+  of Bitcoin took about 5 s the first time.
+- **Desktop app** (`npm run desktop`, Electron 45.2.1): starts the trading server on Electron's own
+  Node (24.22, which has everything the server needs) on a free local port, keeps its data in the
+  app's user-data folder, opens the built app in a window, opens outside links in the browser, allows
+  one copy at a time, and stops the server gracefully on quit. Checked by launching it (`tests/e2e/desktop.ts`): the server starts behind it, the chart works in the window, a paper order fills, quitting stops the server, and the next start finds the position kept in its data folder. Not packaged as an
+  installer yet: it runs from the project folder.
+- **Found and fixed**: a Pine strategy's position still open at the end of a backtest was reported
+  with a result of zero (the built-in engine marks it to the last close); and lint errors had been
+  missed because they were checked through `tail`, which hid them — lint now runs in CI and passes.
+
+## Round 1
 
 - **Three more chart types**: Volume candles (candle width follows the bar's volume, the busiest
   visible bar at full width), HLC area (the high and low as bands around the close, green above and
@@ -44,11 +68,10 @@ the built app are refused (403); every answer carries the security headers. In C
   style picked, none).
 - The screener sorts symbols A→Z on the first click of the Symbol column and numbers largest first.
 
-## Not done in this round
+## Not done yet
 
-- **TPO, Volume footprint, session and anchored volume profiles**: they need tick or footprint data
-  and their own renderers.
+- **Session and anchored volume profiles** (the visible-range profile comes from the chart engine).
+- **An installer** for the desktop app (code signing, auto-update).
 - **Heatmaps, news, economic and earnings calendars, fundamentals, portfolios**: they need data
   sources this project does not have.
-- **Electron desktop shell**: not built; the app runs in any browser or as one Node process.
 - **Auto chart patterns**.

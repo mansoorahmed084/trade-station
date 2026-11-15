@@ -14,6 +14,9 @@ npm run dev        # API server on :8787, web app on :5173
 
 Or as one process with the built app: `npm run build`, then `npm start` and open :8787.
 
+Or as a desktop app: `npm run desktop` (builds the app, then opens it in its own window with the
+server running behind it; its data lives in the app's user-data folder).
+
 ### Settings (environment variables)
 
 | Variable | What it does |
@@ -29,7 +32,8 @@ Keys are read from the environment only; the server never stores them or sends t
 ## What is in it
 
 - **Charts**: 8 synchronised charts per layout, drawings, replay, 20+ chart types including Renko,
-  Kagi, Point & figure, Line break, Range, Volume candles, HLC area and High-low; spreads and formulas.
+  Kagi, Point & figure, Line break, Range, Volume candles, HLC area, High-low, TPO (market profile)
+  and Volume footprint; spreads and formulas.
 - **Indicators**: the chart engine's built-ins, a Pine editor and script library (PineTS runtime),
   native TypeScript indicators.
 - **Alerts** that run on the server with the browser closed: price, indicator, drawing and script
@@ -61,6 +65,7 @@ node tests/golden/compare-tv-trades.ts     # compare a backtest with a TradingVi
 |---|---|
 | `apps/server` | API, market data service, script host, alerts, backtest workers, trading, automation, screener |
 | `apps/web` | React app around the Vela chart workspace |
+| `apps/desktop` | Electron shell: runs the server and opens the app in a window |
 | `packages/core` | Bars, timeframes, aggregation, chart-type transforms, price maths |
 | `packages/datafeed` | Venue adapters (Binance, synthetic), bar store, live hubs |
 | `packages/indicators` | Native indicators |

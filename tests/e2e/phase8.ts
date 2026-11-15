@@ -89,13 +89,50 @@ try {
             .map(([k, v]) => `${k} ${(v * 100).toFixed(1)}% of pixels`)
             .join(', '),
     );
+    // TPO on 15-minute bars, footprints once their trades have arrived.
+    await inPage(page, async () =>
+        (window as any).__ts.workspace.chart.setMarket({ symbol: 'SYNTH:ALPHA', timeframe: '15' }),
+    );
+    await wait(800);
+    const tpo = await painted('tpo');
+    await page.screenshot({ path: 'tests/e2e/phase8-tpo.png' });
+    await inPage(page, async () =>
+        (window as any).__ts.workspace.chart.setMarket({ symbol: 'SYNTH:ALPHA', timeframe: '5' }),
+    );
+    await wait(500);
+    let footprint = await painted('footprint');
+    for (let i = 0; i < 10 && footprint < 0.02; i++) {
+        await wait(500);
+        footprint = await inPage<number>(page, () => {
+            const canvas = document.querySelector('canvas[data-ts-style="footprint"]') as HTMLCanvasElement | null;
+            if (!canvas) return -1;
+            const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+            let on = 0;
+            let n = 0;
+            for (let k = 3; k < d.length; k += 4 * 97) {
+                n++;
+                if (d[k] > 0) on++;
+            }
+            return on / n;
+        });
+    }
+    await page.screenshot({ path: 'tests/e2e/phase8-footprint.png' });
+    const fp = await (await fetch(new URL('/api/footprint?symbol=SYNTH:ALPHA&tf=5&bars=5', url))).json();
+    const balanced = fp.bars.every((b: any) => Math.abs(b.delta - (b.buy - b.sell)) < 1e-6 && b.levels.length > 0);
+    check(
+        'TPO draws session profiles, and the footprint draws each bar’s levels once its trades arrive',
+        tpo > 0.01 && footprint > 0.02 && balanced,
+        `TPO ${(tpo * 100).toFixed(1)}%, footprint ${(footprint * 100).toFixed(1)}% of pixels; ${fp.bars.length} footprint bars, row ${fp.rowSize}`,
+    );
+    await inPage(page, () => (window as any).__ts.workspace.chart.renderer.set('priceStyle', 'candles'));
+
     const listed = await inPage<string[]>(page, () => {
         const types = (window as any).__ts.chartTypes?.() ?? [];
         return types;
     });
     check(
-        'the three styles are registered chart types',
-        ['volumecandles', 'hlcarea', 'highlow'].every((id) => listed.includes(id)),
+        'the new styles are registered chart types',
+        ['volumecandles', 'hlcarea', 'highlow', 'tpo', 'footprint'].every((id) => listed.includes(id)),
         listed.slice(-6).join(', '),
     );
 
