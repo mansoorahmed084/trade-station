@@ -51,7 +51,9 @@ Keys are read from the environment only; the server never stores them or sends t
   Kagi, Point & figure, Line break, Range, Volume candles, HLC area, High-low, TPO (market profile)
   and Volume footprint; spreads and formulas.
 - **Indicators**: the chart engine's built-ins, a Pine editor and script library (PineTS runtime),
-  native TypeScript indicators.
+  native TypeScript indicators. The library ships with two composite indicators, Technical
+  Sentiment Composite and Wave & Flow Matrix (own implementations, not LuxAlgo code), usable on
+  charts, in alerts and as screener columns.
 - **Alerts** that run on the server with the browser closed: price, indicator, drawing and script
   conditions; app, webhook, Discord, Telegram and email.
 - **Strategy tester**: built-in and Pine strategies, TradingView's fill rules, bar magnifier, deep

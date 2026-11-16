@@ -1,6 +1,7 @@
 /**
  * Example scripts seeded into an empty library. All original to this project, so there is nothing to
- * attribute; they exist to show what the editor, alerts and strategy tester can do.
+ * attribute; they exist to show what the editor, alerts and strategy tester can do. The other
+ * bundled scripts, and the list the library is seeded from, are in `library/index.ts`.
  */
 export interface ExampleScript {
     id: string;

@@ -139,7 +139,7 @@ export function ScriptEditor({ client, workspace }: { client: ServerClient; work
             if (current && !current.builtin)
                 saved = await client.post<Script>(`/api/scripts/${current.id}`, { name, source }, 'PUT');
             else {
-                // Examples are never overwritten: saving one creates your own copy.
+                // Bundled scripts are never overwritten: saving one creates your own copy.
                 const copyName = current?.builtin && name === current.name ? `${name} (copy)` : name;
                 saved = await client.post<Script>('/api/scripts', { name: copyName, source });
             }
@@ -289,7 +289,9 @@ export function ScriptEditor({ client, workspace }: { client: ServerClient; work
                                 <span className={`tag tag-${s.kind ?? 'none'}`}>
                                     {s.kind === 'strategy' ? 'S' : 'I'}
                                 </span>
-                                {s.builtin && <span className="tag">example</span>}
+                                {s.builtin && (
+                                    <span className="tag">{s.id.startsWith('example-') ? 'example' : 'built-in'}</span>
+                                )}
                             </span>
                         </button>
                     ))}

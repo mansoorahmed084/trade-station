@@ -3,6 +3,7 @@ import { readHeader, runtimeMembers, type ScriptHost } from '@ts/script-engine';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db.ts';
 import { EXAMPLES } from '../examples.ts';
+import { BUNDLED } from '../library/index.ts';
 
 export interface StoredScript {
     id: string;
@@ -42,34 +43,50 @@ const text = (v: unknown, max: number): string | null => {
     return t ? t.slice(0, max) : null;
 };
 
+/** Ids of the bundled scripts this library has been given, so that one you delete stays deleted. */
+const SEEDED_KEY = 'scripts.seeded';
+
 /** The user's script library. Scripts live on the server so alerts and strategies can run them. */
 export class ScriptStore {
     private db: Db;
 
     constructor(db: Db) {
         this.db = db;
-        const count = (db.sql.prepare('SELECT COUNT(*) AS n FROM scripts').get() as { n: number }).n;
-        if (count === 0) this.seed();
+        this.seed();
     }
 
+    /**
+     * Put the bundled scripts into the library. An empty library gets all of them; after that it
+     * gets only the ones it has never been given, so a script bundled in a later version arrives
+     * once, at the top of the list, and nothing you deleted comes back.
+     */
     private seed(): void {
+        const count = (this.db.sql.prepare('SELECT COUNT(*) AS n FROM scripts').get() as { n: number }).n;
+        // A library from before this record was kept was seeded with the examples and nothing else.
+        const examples = EXAMPLES.map((e) => e.id);
+        const record = this.db.kvJson<unknown>(SEEDED_KEY, examples);
+        const given = new Set<string>(count === 0 ? [] : Array.isArray(record) ? record : examples);
+        const missing = BUNDLED.filter((s) => !given.has(s.id));
+        if (missing.length === 0) return;
         const now = Date.now();
         const insert = this.db.sql.prepare(
-            'INSERT INTO scripts (id, name, source, kind, author, license, origin, builtin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+            'INSERT OR IGNORE INTO scripts (id, name, source, kind, author, license, origin, builtin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
         );
-        EXAMPLES.forEach((e, i) => {
+        missing.forEach((s, i) => {
             insert.run(
-                e.id,
-                e.name,
-                e.source,
-                readHeader(e.source).kind,
-                'Trade Station',
-                'Example — use freely',
-                null,
+                s.id,
+                s.name,
+                s.source,
+                readHeader(s.source).kind,
+                s.author,
+                s.license,
+                s.origin,
                 now - i,
                 now - i,
             );
+            given.add(s.id);
         });
+        this.db.kvSet(SEEDED_KEY, JSON.stringify([...given]));
     }
 
     list(): Omit<StoredScript, 'source'>[] {

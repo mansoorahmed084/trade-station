@@ -207,11 +207,13 @@ describe('script library and script host API', () => {
             body: JSON.stringify(body),
         });
 
-    it('seeds example scripts that all run cleanly on this runtime', async () => {
+    it('seeds bundled scripts that all run cleanly on this runtime', async () => {
         const list = await (await fetch(`${base}/api/scripts`)).json();
-        expect(list.length).toBeGreaterThanOrEqual(7);
+        expect(list.length).toBeGreaterThanOrEqual(9);
         expect(list.every((s: any) => s.builtin && s.source === undefined)).toBe(true);
         expect(list.map((s: any) => s.kind).sort()).toEqual([
+            'indicator',
+            'indicator',
             'indicator',
             'indicator',
             'indicator',
@@ -220,6 +222,9 @@ describe('script library and script host API', () => {
             'strategy',
             'strategy',
         ]);
+        // A new library opens on the examples; the bundled indicators follow them.
+        expect(list[0].id).toBe('example-ema-ribbon');
+        expect(list.slice(-2).map((s: any) => s.name)).toEqual(['Technical Sentiment Composite', 'Wave & Flow Matrix']);
         for (const meta of list) {
             const script = await (await fetch(`${base}/api/scripts/${meta.id}`)).json();
             const report = await (
